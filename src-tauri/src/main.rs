@@ -44,7 +44,7 @@ fn main() {
 }
 
 pub(crate) fn start_pipeline_if_configured(
-    _handle: &tauri::AppHandle,
+    handle: &tauri::AppHandle,
     vault_url: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let cfg = config::load()?;
@@ -73,6 +73,7 @@ pub(crate) fn start_pipeline_if_configured(
         vault_url.to_string(),
         token_getter,
         watch_folder.to_string(),
+        handle.clone(),
     );
 
     if cfg.scan_existing_on_pick {

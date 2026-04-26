@@ -3,7 +3,12 @@
 //! cannot navigate. They simply appear, briefly, and dismiss themselves
 //! (or get folded into Action Center / Notification Center on click).
 
-#[allow(dead_code)]
+use std::sync::atomic::{AtomicBool, Ordering};
+use tauri::AppHandle;
+use tauri_plugin_notification::NotificationExt;
+
+use crate::config::Config;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum NotifyEvent {
     Single {
@@ -41,12 +46,6 @@ pub fn title_and_body(event: &NotifyEvent) -> (String, String) {
     }
 }
 
-use std::sync::atomic::{AtomicBool, Ordering};
-use tauri::AppHandle;
-use tauri_plugin_notification::NotificationExt;
-
-use crate::config::Config;
-
 /// Tracks whether we've already logged a notification permission warning.
 /// macOS denies notification permission silently after the first prompt;
 /// without this flag we'd spam the log on every upload.
@@ -56,7 +55,6 @@ static PERMISSION_WARNED: AtomicBool = AtomicBool::new(false);
 /// is false. Errors from the OS plugin are logged at warn (once) and
 /// otherwise swallowed — uploads must keep working regardless of whether
 /// notifications do.
-#[allow(dead_code)]
 pub fn notify(app: &AppHandle, cfg: &Config, event: NotifyEvent) {
     if !cfg.notifications_enabled {
         return;
