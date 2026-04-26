@@ -29,6 +29,7 @@ rusqlite = { version = "0.39", features = ["bundled"] }
 dirs = "6"
 tauri-plugin-dialog = "2"
 crossbeam-channel = "0.5"
+tauri-plugin-notification = "2"
 
 [features]
 default = ["custom-protocol"]

@@ -6,6 +6,7 @@ mod config;
 mod db;
 mod dialogs;
 mod keychain;
+mod notifier;
 mod pipeline;
 mod tray;
 mod uploader;
@@ -20,6 +21,7 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             let handle = app.handle().clone();
             tray::install(&handle)?;
