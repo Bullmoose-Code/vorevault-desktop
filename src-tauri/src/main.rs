@@ -2,8 +2,14 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod auth;
+mod config;
+mod db;
+mod dialogs;
 mod keychain;
+mod pipeline;
 mod tray;
+mod uploader;
+mod watcher;
 
 fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
