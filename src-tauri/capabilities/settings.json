@@ -1,0 +1,24 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "settings-window",
+  "description": "Capabilities for the VoreVault desktop settings window: invoke our app commands + use bundled plugins (opener, dialog, notification, autostart).",
+  "windows": ["settings"],
+  "permissions": [
+    "core:default",
+    "core:event:default",
+    "core:webview:default",
+    "core:window:default",
+    "opener:default",
+    "dialog:allow-open",
+    "notification:default",
+    "autostart:allow-enable",
+    "autostart:allow-disable",
+    "autostart:allow-is-enabled",
+    "allow-get-state",
+    "allow-get-autostart",
+    "allow-set-autostart",
+    "allow-change-watch-folder",
+    "allow-sign-out",
+    "allow-sign-in"
+  ]
+}
