@@ -40,8 +40,8 @@ pub fn build_init_url(vault_url: &str, port: u16, code_challenge: &str) -> Strin
     )
 }
 
-use std::time::Duration;
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 use tiny_http::{Method, Response, Server};
 
 /// Bundled at compile time so we have a self-contained binary.
@@ -149,7 +149,10 @@ fn extract_code_from_request(req: tiny_http::Request) -> Result<String, AuthErro
         Ok(u) => u,
         Err(e) => {
             let _ = req.respond(Response::from_string("Bad request").with_status_code(400));
-            return Err(AuthError::BadCallback(format!("malformed callback url: {}", e)));
+            return Err(AuthError::BadCallback(format!(
+                "malformed callback url: {}",
+                e
+            )));
         }
     };
 
@@ -183,8 +186,14 @@ fn extract_code_from_request(req: tiny_http::Request) -> Result<String, AuthErro
 /// session_token from the response body on success, or AuthError::ExchangeFailed
 /// on any non-success status / network failure / parse failure.
 fn exchange_code(vault_url: &str, code: &str, code_verifier: &str) -> Result<String, AuthError> {
-    let url = format!("{}/api/auth/desktop-exchange", vault_url.trim_end_matches('/'));
-    let body = ExchangeRequest { code, code_verifier };
+    let url = format!(
+        "{}/api/auth/desktop-exchange",
+        vault_url.trim_end_matches('/')
+    );
+    let body = ExchangeRequest {
+        code,
+        code_verifier,
+    };
     let client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(15))
         .build()
@@ -280,7 +289,9 @@ pub fn current_state(vault_url: &str) -> AuthState {
     }
 
     match resp.json::<MeResponse>() {
-        Ok(MeResponse { user: Some(u) }) => AuthState { username: Some(u.username) },
+        Ok(MeResponse { user: Some(u) }) => AuthState {
+            username: Some(u.username),
+        },
         Ok(MeResponse { user: None }) => AuthState { username: None },
         Err(e) => {
             log::warn!("failed to parse /api/auth/me response: {}", e);
@@ -328,14 +339,18 @@ mod tests {
     fn code_verifier_is_43_char_base64url() {
         let v = generate_code_verifier();
         assert_eq!(v.len(), 43);
-        assert!(v.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-'));
+        assert!(v
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-'));
     }
 
     #[test]
     fn code_challenge_is_43_char_base64url() {
         let c = compute_code_challenge("any-verifier");
         assert_eq!(c.len(), 43);
-        assert!(c.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-'));
+        assert!(c
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-'));
     }
 
     #[test]
@@ -344,7 +359,10 @@ mod tests {
         // code_verifier  = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
         // code_challenge = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
         let v = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
-        assert_eq!(compute_code_challenge(v), "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM");
+        assert_eq!(
+            compute_code_challenge(v),
+            "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
+        );
     }
 
     #[test]

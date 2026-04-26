@@ -19,7 +19,10 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
     // real signed-in/out state once we've checked the server.
     let loading = MenuItem::with_id(app, "loading", "Loading…", false, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit VoreVault", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&loading, &PredefinedMenuItem::separator(app)?, &quit])?;
+    let menu = Menu::with_items(
+        app,
+        &[&loading, &PredefinedMenuItem::separator(app)?, &quit],
+    )?;
 
     let _tray = TrayIconBuilder::with_id(TRAY_ID)
         .icon(icon)
