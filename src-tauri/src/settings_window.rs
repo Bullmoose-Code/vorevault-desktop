@@ -89,8 +89,11 @@ pub fn current_state(_app: &tauri::AppHandle) -> SettingsState {
     build_state(username, watch_folder, paused)
 }
 
-/// Emit "settings:state-changed" with the current snapshot. Cheap no-op when
-/// the window is closed (no listeners).
+/// Emit "settings:state-changed" with the current snapshot. Always performs
+/// the same I/O as `current_state` (including a `/api/auth/me` HTTP request);
+/// only the emit itself is a no-op when the window is closed (no listeners).
+/// Callers on the main/event-dispatcher thread should consider wrapping in
+/// `tauri::async_runtime::spawn_blocking` to avoid UI hazards.
 pub fn emit_state_changed(app: &tauri::AppHandle) {
     use tauri::Emitter;
     let state = current_state(app);
