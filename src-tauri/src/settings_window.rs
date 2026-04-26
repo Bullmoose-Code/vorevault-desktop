@@ -142,6 +142,27 @@ pub fn install_close_handler(app: &tauri::AppHandle) {
     }
 }
 
+#[tauri::command]
+pub fn get_state(app: tauri::AppHandle) -> SettingsState {
+    current_state(&app)
+}
+
+#[tauri::command]
+pub fn get_autostart(app: tauri::AppHandle) -> Result<bool, String> {
+    use tauri_plugin_autostart::ManagerExt;
+    app.autolaunch()
+        .is_enabled()
+        .map_err(|e| format!("autostart read failed: {}", e))
+}
+
+#[tauri::command]
+pub fn set_autostart(app: tauri::AppHandle, enabled: bool) -> Result<(), String> {
+    use tauri_plugin_autostart::ManagerExt;
+    let mgr = app.autolaunch();
+    let res = if enabled { mgr.enable() } else { mgr.disable() };
+    res.map_err(|e| format!("autostart write failed: {}", e))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
