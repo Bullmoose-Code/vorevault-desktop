@@ -1,0 +1,165 @@
+/* Hand-ported design tokens from VoreVault web (vault.bullmoosefn.com).
+   See vorevault repo: app/src/app/globals.css and design-system/MASTER.md. */
+
+/* TODO: Bundle real woff2 font files in ui/fonts/ once available.
+   Google Fonts CDN was unreachable during build (returned HTML, not woff2).
+   Required files:
+     ui/fonts/Fraunces-VariableFont.woff2   (https://fonts.google.com/specimen/Fraunces — variable italic)
+     ui/fonts/Inter-VariableFont.woff2       (https://rsms.me/inter/ — Inter v4 Variable)
+     ui/fonts/JetBrainsMono-VariableFont.woff2 (https://www.jetbrains.com/lp/mono/ — variable)
+   Until then, falling back to system fonts below. */
+
+@font-face {
+  font-family: "Fraunces";
+  /* TODO: replace with bundled woff2 when available */
+  src: local("Fraunces"), local("Georgia Italic");
+  font-weight: 100 900;
+  font-style: italic;
+  font-display: block;
+}
+@font-face {
+  font-family: "Inter";
+  /* TODO: replace with: src: url("fonts/Inter-VariableFont.woff2") format("woff2"); */
+  src: local("Inter"), local("system-ui");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  /* TODO: replace with: src: url("fonts/JetBrainsMono-VariableFont.woff2") format("woff2"); */
+  src: local("JetBrains Mono"), local("Menlo"), local("Consolas");
+  font-weight: 100 800;
+  font-style: normal;
+  font-display: block;
+}
+
+:root {
+  --vv-cream: #fdfbf6;
+  --vv-cream-2: #f4ede0;
+  --vv-cream-3: #fff8e8;
+  --vv-ink: #1a1a1a;
+  --vv-muted: #555;
+  --vv-faint: #777;
+  --vv-dashed: #c4b69e;
+  --vv-danger: #fde4e4;
+  --vv-danger-ink: #b34a3a;
+  --vv-go: #d8efd2;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--vv-cream);
+  color: var(--vv-ink);
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  font-size: 13px;
+  line-height: 1.4;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+main { padding: 22px 26px 18px; }
+
+.display-title {
+  font-family: "Fraunces", Georgia, serif;
+  font-style: italic;
+  font-weight: 400;
+  font-size: 26px;
+  line-height: 1;
+  margin: 0 0 2px;
+}
+
+.subtitle {
+  font-size: 11px;
+  color: var(--vv-faint);
+  margin: 0 0 16px;
+  text-transform: lowercase;
+}
+
+.rows { margin-bottom: 6px; }
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 11px 0;
+  border-bottom: 1px dashed var(--vv-dashed);
+  font-size: 13px;
+}
+.row:last-child { border-bottom: none; }
+.row.disabled .row-label,
+.row.disabled .row-control { opacity: 0.4; }
+
+.row-label { color: var(--vv-ink); }
+
+.row-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--vv-muted);
+  font-size: 12px;
+}
+.row-control.mono { font-family: "JetBrains Mono", ui-monospace, monospace; }
+
+.btn {
+  border: 1.5px solid var(--vv-ink);
+  background: var(--vv-cream-3);
+  box-shadow: 2px 2px 0 var(--vv-ink);
+  padding: 4px 10px;
+  border-radius: 3px;
+  font-size: 12px;
+  font-family: inherit;
+  color: var(--vv-ink);
+  cursor: pointer;
+  transition: transform 80ms ease, box-shadow 80ms ease;
+}
+.btn:hover { background: var(--vv-cream-2); }
+.btn:active { transform: translate(1px, 1px); box-shadow: 1px 1px 0 var(--vv-ink); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: 2px 2px 0 var(--vv-ink); }
+.btn-danger { background: var(--vv-danger); }
+.btn-go { background: var(--vv-go); }
+
+.btn-warn {
+  color: var(--vv-danger-ink);
+  font-style: italic;
+}
+
+.username {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  color: var(--vv-muted);
+}
+
+.error-banner {
+  padding: 24px;
+  color: var(--vv-danger-ink);
+  font-style: italic;
+}
+
+.inline-error {
+  color: var(--vv-danger-ink);
+  font-style: italic;
+  font-size: 11px;
+}
+
+.signed-out-text {
+  color: var(--vv-faint);
+}
+
+.footer {
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid var(--vv-dashed);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  color: var(--vv-faint);
+}
+.footer a {
+  color: var(--vv-danger-ink);
+  text-decoration: underline;
+  cursor: pointer;
+}
