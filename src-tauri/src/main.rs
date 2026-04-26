@@ -4,10 +4,10 @@
 mod auth;
 mod config;
 mod db;
-mod dialogs;
 mod keychain;
 mod notifier;
 mod pipeline;
+mod settings_window;
 mod tray;
 mod uploader;
 mod watcher;
@@ -22,9 +22,22 @@ fn main() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
+        .invoke_handler(tauri::generate_handler![
+            settings_window::get_state,
+            settings_window::get_autostart,
+            settings_window::set_autostart,
+            settings_window::change_watch_folder,
+            settings_window::sign_out,
+            settings_window::sign_in,
+        ])
         .setup(|app| {
             let handle = app.handle().clone();
             tray::install(&handle)?;
+            crate::settings_window::install_close_handler(&handle);
 
             std::thread::spawn(move || {
                 let vault_url = auth::vault_url_from_env();
@@ -80,7 +93,7 @@ pub(crate) fn start_pipeline_if_configured(
         scan_and_enqueue(&watch_path, &pipeline);
     }
 
-    let _ = tray::PIPELINE.set(pipeline);
+    *tray::PIPELINE.write().unwrap() = Some(pipeline);
 
     Ok(())
 }

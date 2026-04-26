@@ -1,4 +1,4 @@
-use std::sync::{Mutex, OnceLock};
+use std::sync::Mutex;
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::TrayIconBuilder,
@@ -14,10 +14,11 @@ static OP_IN_PROGRESS: Mutex<bool> = Mutex::new(false);
 /// The running pipeline. Set by main.rs after a successful folder-pick
 /// or on startup if a folder is already configured. None if no pipeline
 /// is currently running.
-pub static PIPELINE: OnceLock<crate::pipeline::Pipeline> = OnceLock::new();
+pub static PIPELINE: std::sync::RwLock<Option<crate::pipeline::Pipeline>> =
+    std::sync::RwLock::new(None);
 
 fn read_pipeline_state(_app: &AppHandle) -> Option<crate::pipeline::PipelineState> {
-    PIPELINE.get().map(|p| p.snapshot())
+    PIPELINE.read().unwrap().as_ref().map(|p| p.snapshot())
 }
 
 /// Install the tray icon at app startup. Called from `main.rs` `setup`.
@@ -61,6 +62,10 @@ pub fn refresh_menu(app: &AppHandle, vault_url: &str) {
     if let Some(tray) = app.tray_by_id(TRAY_ID) {
         let _ = tray.set_menu(Some(menu));
     }
+}
+
+pub fn spawn_sign_in_command(app: tauri::AppHandle) {
+    spawn_sign_in(app);
 }
 
 fn build_menu(
@@ -114,7 +119,13 @@ fn build_menu(
             } else {
                 None
             };
-            let pick = MenuItem::with_id(app, "pick-folder", "Pick folder…", true, None::<&str>)?;
+            let is_paused = PIPELINE
+                .read()
+                .unwrap()
+                .as_ref()
+                .map(|p| p.is_paused())
+                .unwrap_or(false);
+
             let cfg_for_label = crate::config::load().unwrap_or_default();
             let notif_label = if cfg_for_label.notifications_enabled {
                 "Show notifications: On"
@@ -123,14 +134,41 @@ fn build_menu(
             };
             let notif =
                 MenuItem::with_id(app, "toggle-notifications", notif_label, true, None::<&str>)?;
-            let signout = MenuItem::with_id(app, "sign-out", "Sign out", true, None::<&str>)?;
+
+            let open_settings =
+                MenuItem::with_id(app, "open-settings", "Open VoreVault…", true, None::<&str>)?;
+
+            let pause_label = if is_paused {
+                "Pause uploads  ✓"
+            } else {
+                "Pause uploads"
+            };
+            let pause_item =
+                MenuItem::with_id(app, "toggle-pause", pause_label, true, None::<&str>)?;
+
+            let paused_row = if is_paused {
+                Some(MenuItem::with_id(
+                    app,
+                    "paused-status",
+                    "⏸ Paused",
+                    false,
+                    None::<&str>,
+                )?)
+            } else {
+                None
+            };
+
             let sep1 = PredefinedMenuItem::separator(app)?;
             let sep2 = PredefinedMenuItem::separator(app)?;
+            let sep3 = PredefinedMenuItem::separator(app)?;
 
             // Build the items list dynamically with explicit ownership.
             let mut items: Vec<&dyn tauri::menu::IsMenuItem<Wry>> = vec![&signed_in];
             if let Some(w) = &watching {
                 items.push(w);
+            }
+            if let Some(pr) = &paused_row {
+                items.push(pr);
             }
             if let Some(u) = &uploading {
                 items.push(u);
@@ -139,10 +177,11 @@ fn build_menu(
                 items.push(f);
             }
             items.push(&sep1);
-            items.push(&pick);
             items.push(&notif);
+            items.push(&pause_item);
             items.push(&sep2);
-            items.push(&signout);
+            items.push(&open_settings);
+            items.push(&sep3);
             items.push(&quit);
 
             Menu::with_items(app, &items)
@@ -157,9 +196,9 @@ fn build_menu(
                 None::<&str>,
             )?;
             let sep = PredefinedMenuItem::separator(app)?;
-            let pick = MenuItem::with_id(app, "pick-folder", "Pick folder…", true, None::<&str>)?;
-            let signout = MenuItem::with_id(app, "sign-out", "Sign out", true, None::<&str>)?;
-            Menu::with_items(app, &[&signed_in, &sep, &pick, &signout, &quit])
+            let open_settings =
+                MenuItem::with_id(app, "open-settings", "Open VoreVault…", true, None::<&str>)?;
+            Menu::with_items(app, &[&signed_in, &sep, &open_settings, &quit])
         }
         (None, _) => {
             // Signed out.
@@ -173,9 +212,28 @@ fn build_menu(
 fn handle_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
     match event.id.as_ref() {
         "sign-in" => spawn_sign_in(app.clone()),
-        "sign-out" => spawn_sign_out(app.clone()),
-        "pick-folder" => spawn_pick_folder(app.clone()),
         "toggle-notifications" => spawn_toggle_notifications(app.clone()),
+        "open-settings" => {
+            crate::settings_window::show(app);
+        }
+        "toggle-pause" => {
+            let new_paused;
+            {
+                let guard = PIPELINE.read().unwrap();
+                if let Some(pipeline) = guard.as_ref() {
+                    new_paused = !pipeline.is_paused();
+                    pipeline.set_paused(new_paused);
+                } else {
+                    return;
+                }
+            }
+            let vault_url = crate::auth::vault_url_from_env();
+            refresh_menu(app, &vault_url);
+            log::info!(
+                "pipeline {} via tray",
+                if new_paused { "paused" } else { "resumed" }
+            );
+        }
         "quit" => app.exit(0),
         _ => {}
     }
@@ -202,38 +260,22 @@ fn spawn_sign_in(app: AppHandle) {
             }
         };
         refresh_menu(&app, &vault_url);
+        if signed_in {
+            crate::settings_window::emit_state_changed(&app);
+        }
         release_lock();
 
         // Onboarding: if this is the user's first successful sign-in and no
         // watch folder is configured yet, immediately prompt them to pick one.
         if signed_in
-            && PIPELINE.get().is_none()
+            && PIPELINE.read().unwrap().is_none()
             && crate::config::load()
                 .ok()
                 .and_then(|c| c.watch_folder)
                 .is_none()
         {
-            do_pick_folder(&app);
+            crate::settings_window::show_first_run(&app);
         }
-    });
-}
-
-fn spawn_sign_out(app: AppHandle) {
-    if !try_acquire_lock() {
-        log::info!("sign-out already in progress; ignoring click");
-        return;
-    }
-    std::thread::spawn(move || {
-        let vault_url = crate::auth::vault_url_from_env();
-        crate::auth::sign_out(&vault_url);
-        refresh_menu(&app, &vault_url);
-        release_lock();
-    });
-}
-
-fn spawn_pick_folder(app: AppHandle) {
-    std::thread::spawn(move || {
-        do_pick_folder(&app);
     });
 }
 
@@ -256,76 +298,6 @@ fn spawn_toggle_notifications(app: AppHandle) {
         let vault_url = crate::auth::vault_url_from_env();
         refresh_menu(&app, &vault_url);
     });
-}
-
-/// Run the full pick-folder flow synchronously on the calling thread:
-/// open the picker, ask about existing files, save config, start the
-/// pipeline (if not already running), refresh the menu. Caller is
-/// responsible for running this off the main thread.
-fn do_pick_folder(app: &AppHandle) {
-    let path = match crate::dialogs::pick_folder(app) {
-        Some(p) => p,
-        None => return,
-    };
-
-    let count = count_files_recursive(&path);
-
-    let scan_existing = if count > 0 {
-        crate::dialogs::yes_no(
-            app,
-            "Upload existing files?",
-            &format!(
-                "Found {} existing files in this folder. Upload them too?",
-                count,
-            ),
-        )
-    } else {
-        true
-    };
-
-    let mut cfg = crate::config::load().unwrap_or_default();
-    cfg.watch_folder = Some(path.to_string_lossy().to_string());
-    cfg.scan_existing_on_pick = scan_existing;
-    if let Err(e) = crate::config::save(&cfg) {
-        log::warn!("failed to save config: {}", e);
-        return;
-    }
-
-    let vault_url = crate::auth::vault_url_from_env();
-
-    if PIPELINE.get().is_none() {
-        if let Err(e) = crate::start_pipeline_if_configured(app, &vault_url) {
-            log::warn!("could not start pipeline after pick: {}", e);
-        }
-    } else {
-        // OnceLock is one-shot per process. A second pick this session can't
-        // swap the running watcher; user must restart for the new folder to
-        // take effect. Still update the saved config so the next launch uses it.
-        log::warn!(
-            "pipeline already running on a previous folder; \
-             saved new folder to config — restart app to switch"
-        );
-    }
-
-    refresh_menu(app, &vault_url);
-}
-
-fn count_files_recursive(root: &std::path::Path) -> u64 {
-    fn walk(p: &std::path::Path, n: &mut u64) {
-        if let Ok(entries) = std::fs::read_dir(p) {
-            for e in entries.flatten() {
-                let path = e.path();
-                if path.is_file() {
-                    *n += 1;
-                } else if path.is_dir() {
-                    walk(&path, n);
-                }
-            }
-        }
-    }
-    let mut n = 0u64;
-    walk(root, &mut n);
-    n
 }
 
 fn try_acquire_lock() -> bool {

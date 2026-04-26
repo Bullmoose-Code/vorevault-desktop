@@ -138,6 +138,8 @@ pub struct PipelineState {
 pub struct Pipeline {
     state: Arc<Mutex<PipelineState>>,
     enqueue: Sender<PathBuf>,
+    pause_gate: PauseGate,
+    app: tauri::AppHandle,
 }
 
 /// Bundle of everything a worker thread needs to process one path.
@@ -153,6 +155,59 @@ struct WorkerCtx {
     notify_lock: Arc<Mutex<()>>,
     watch_folder: String,
     in_forwarder: Arc<AtomicUsize>,
+    pause_gate: PauseGate,
+}
+
+/// Soft-pause gate for worker threads. When paused, workers calling
+/// `wait_while_paused` block until `set_paused(false)` is called. In-flight
+/// uploads are not interrupted — they finish naturally before the next
+/// `wait_while_paused` call.
+pub struct PauseGate {
+    inner: std::sync::Arc<(std::sync::Mutex<bool>, std::sync::Condvar)>,
+}
+
+impl PauseGate {
+    pub fn new() -> Self {
+        PauseGate {
+            inner: std::sync::Arc::new((std::sync::Mutex::new(false), std::sync::Condvar::new())),
+        }
+    }
+
+    pub fn set_paused(&self, paused: bool) {
+        let (lock, cvar) = &*self.inner;
+        *lock.lock().unwrap() = paused;
+        if !paused {
+            cvar.notify_all();
+        }
+    }
+
+    pub fn is_paused(&self) -> bool {
+        let (lock, _) = &*self.inner;
+        *lock.lock().unwrap()
+    }
+
+    /// Block while paused. Returns immediately if not paused.
+    pub fn wait_while_paused(&self) {
+        let (lock, cvar) = &*self.inner;
+        let mut paused = lock.lock().unwrap();
+        while *paused {
+            paused = cvar.wait(paused).unwrap();
+        }
+    }
+}
+
+impl Clone for PauseGate {
+    fn clone(&self) -> Self {
+        PauseGate {
+            inner: self.inner.clone(),
+        }
+    }
+}
+
+impl Default for PauseGate {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Pipeline {
@@ -161,6 +216,16 @@ impl Pipeline {
     }
     pub fn snapshot(&self) -> PipelineState {
         self.state.lock().unwrap().clone()
+    }
+    pub fn set_paused(&self, paused: bool) {
+        let was = self.pause_gate.is_paused();
+        self.pause_gate.set_paused(paused);
+        if was != paused {
+            crate::settings_window::emit_state_changed(&self.app);
+        }
+    }
+    pub fn is_paused(&self) -> bool {
+        self.pause_gate.is_paused()
     }
 }
 
@@ -183,6 +248,7 @@ pub fn start(
     let successes_this_drain = Arc::new(AtomicU32::new(0));
     let notify_lock = Arc::new(Mutex::new(()));
     let in_forwarder = Arc::new(AtomicUsize::new(0));
+    let pause_gate = PauseGate::new();
 
     // Forwarder: drain watcher_rx + enqueue_rx into a single work_rx.
     let (work_tx, work_rx) = crossbeam_channel::unbounded::<PathBuf>();
@@ -228,9 +294,11 @@ pub fn start(
             notify_lock: notify_lock.clone(),
             watch_folder: watching_path.clone(),
             in_forwarder: in_forwarder.clone(),
+            pause_gate: pause_gate.clone(),
         };
         std::thread::spawn(move || {
             while let Ok(path) = ctx.work_rx.recv() {
+                ctx.pause_gate.wait_while_paused();
                 process_one(&ctx, &path);
             }
         });
@@ -239,6 +307,8 @@ pub fn start(
     Pipeline {
         state,
         enqueue: enqueue_tx,
+        pause_gate,
+        app: app.clone(),
     }
 }
 
@@ -559,5 +629,55 @@ mod tests {
             decide_notification(0, 0, 17, true),
             NotificationAction::Batch(17)
         );
+    }
+
+    #[test]
+    fn pause_gate_starts_unpaused() {
+        let gate = super::PauseGate::new();
+        assert!(!gate.is_paused());
+    }
+
+    #[test]
+    fn pause_gate_set_paused_flips_state() {
+        let gate = super::PauseGate::new();
+        gate.set_paused(true);
+        assert!(gate.is_paused());
+        gate.set_paused(false);
+        assert!(!gate.is_paused());
+    }
+
+    #[test]
+    fn pause_gate_wait_returns_immediately_when_unpaused() {
+        let gate = super::PauseGate::new();
+        let start = std::time::Instant::now();
+        gate.wait_while_paused();
+        assert!(start.elapsed() < std::time::Duration::from_millis(50));
+    }
+
+    #[test]
+    fn pause_gate_wait_unblocks_on_resume() {
+        use std::sync::mpsc;
+        use std::sync::Arc;
+        let gate = Arc::new(super::PauseGate::new());
+        gate.set_paused(true);
+
+        // Channel to signal "waiter is about to enter wait_while_paused".
+        // Eliminates the race where set_paused(false) fires before the
+        // waiter parks (which would let the test pass for the wrong reason).
+        let (tx, rx) = mpsc::channel();
+        let gate_clone = gate.clone();
+        let waiter = std::thread::spawn(move || {
+            tx.send(()).unwrap();
+            gate_clone.wait_while_paused();
+        });
+
+        rx.recv().unwrap();
+        // Tiny sleep to give the waiter time to grab the lock + park.
+        std::thread::sleep(std::time::Duration::from_millis(10));
+
+        gate.set_paused(false);
+
+        // If unblock failed, this hangs forever (test runner times out).
+        waiter.join().unwrap();
     }
 }

@@ -1,0 +1,11 @@
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-change-watch-folder"
+description = "Enables the change_watch_folder command without any pre-configured scope."
+commands.allow = ["change_watch_folder"]
+
+[[permission]]
+identifier = "deny-change-watch-folder"
+description = "Denies the change_watch_folder command without any pre-configured scope."
+commands.deny = ["change_watch_folder"]

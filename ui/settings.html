@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self';">
+  <title>VoreVault</title>
+  <link rel="stylesheet" href="settings.css">
+</head>
+<body>
+  <main id="root" aria-live="polite">
+    <h1 class="display-title">settings</h1>
+    <p class="subtitle" id="vault-host">vault.bullmoosefn.com</p>
+
+    <section class="rows" id="rows">
+      <div class="row" id="row-account">
+        <span class="row-label">account</span>
+        <span class="row-control" id="ctrl-account"></span>
+      </div>
+      <div class="row" id="row-folder">
+        <span class="row-label">watch folder</span>
+        <span class="row-control" id="ctrl-folder"></span>
+      </div>
+      <div class="row" id="row-autostart">
+        <span class="row-label">launch at login</span>
+        <span class="row-control" id="ctrl-autostart"></span>
+      </div>
+      <div class="row" id="row-version">
+        <span class="row-label">version</span>
+        <span class="row-control mono" id="ctrl-version"></span>
+      </div>
+    </section>
+
+    <footer class="footer">
+      <span>self-hosted clip vault</span>
+      <a id="report-issue" href="#" target="_blank" rel="noopener">report an issue ↗</a>
+    </footer>
+  </main>
+  <script src="settings.js"></script>
+</body>
+</html>

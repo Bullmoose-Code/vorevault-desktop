@@ -1,6 +1,6 @@
 [package]
 name = "vorevault"
-version = "0.1.0"
+version = "0.4.0"
 description = "Desktop tray client for VoreVault"
 edition.workspace = true
 license.workspace = true
@@ -30,6 +30,7 @@ dirs = "6"
 tauri-plugin-dialog = "2"
 crossbeam-channel = "0.5"
 tauri-plugin-notification = "2"
+tauri-plugin-autostart = "2"
 
 [features]
 default = ["custom-protocol"]
