@@ -1,3 +1,4 @@
+mod auth;
 mod keychain;
 
 fn main() {
