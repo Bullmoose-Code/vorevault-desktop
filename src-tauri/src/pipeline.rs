@@ -5,7 +5,7 @@ use crate::uploader::{self, UploadError};
 use crossbeam_channel::{Receiver, Sender};
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::AppHandle;
@@ -152,6 +152,7 @@ struct WorkerCtx {
     successes_this_drain: Arc<AtomicU32>,
     notify_lock: Arc<Mutex<()>>,
     watch_folder: String,
+    in_forwarder: Arc<AtomicUsize>,
 }
 
 impl Pipeline {
@@ -181,22 +182,32 @@ pub fn start(
     }));
     let successes_this_drain = Arc::new(AtomicU32::new(0));
     let notify_lock = Arc::new(Mutex::new(()));
+    let in_forwarder = Arc::new(AtomicUsize::new(0));
 
     // Forwarder: drain watcher_rx + enqueue_rx into a single work_rx.
     let (work_tx, work_rx) = crossbeam_channel::unbounded::<PathBuf>();
     {
         let work_tx = work_tx.clone();
+        let in_forwarder = in_forwarder.clone();
         std::thread::spawn(move || loop {
             crossbeam_channel::select! {
                 recv(watcher_rx) -> p => {
                     match p {
-                        Ok(p) => { let _ = work_tx.send(p); }
+                        Ok(p) => {
+                            in_forwarder.fetch_add(1, Ordering::Relaxed);
+                            let _ = work_tx.send(p);
+                            in_forwarder.fetch_sub(1, Ordering::Relaxed);
+                        }
                         Err(_) => break,
                     }
                 }
                 recv(enqueue_rx) -> p => {
                     match p {
-                        Ok(p) => { let _ = work_tx.send(p); }
+                        Ok(p) => {
+                            in_forwarder.fetch_add(1, Ordering::Relaxed);
+                            let _ = work_tx.send(p);
+                            in_forwarder.fetch_sub(1, Ordering::Relaxed);
+                        }
                         Err(_) => break,
                     }
                 }
@@ -216,6 +227,7 @@ pub fn start(
             successes_this_drain: successes_this_drain.clone(),
             notify_lock: notify_lock.clone(),
             watch_folder: watching_path.clone(),
+            in_forwarder: in_forwarder.clone(),
         };
         std::thread::spawn(move || {
             while let Ok(path) = ctx.work_rx.recv() {
@@ -356,18 +368,27 @@ fn process_one(ctx: &WorkerCtx, path: &Path) {
 fn on_success(ctx: &WorkerCtx, filename: &str) {
     ctx.successes_this_drain.fetch_add(1, Ordering::Relaxed);
 
-    let _g = ctx.notify_lock.lock().unwrap();
-
-    let in_flight = ctx.state.lock().unwrap().uploading as u32;
-    let queued = ctx.work_rx.len() as u32;
-    let cfg = crate::config::load().unwrap_or_default();
-
-    let action = decide_notification(
-        in_flight,
-        queued,
-        ctx.successes_this_drain.load(Ordering::Relaxed),
-        cfg.notifications_enabled,
-    );
+    // Compute the action and reset the counter under the lock.
+    // Drop the lock BEFORE calling notifier::notify so a slow OS plugin
+    // call doesn't serialize other workers' completions behind it.
+    // Synchronization for the Relaxed counter is provided by notify_lock's
+    // acquire/release semantics.
+    let (action, cfg) = {
+        let _g = ctx.notify_lock.lock().unwrap();
+        let in_flight = ctx.state.lock().unwrap().uploading as u32;
+        let queued = ctx.work_rx.len() as u32 + ctx.in_forwarder.load(Ordering::Relaxed) as u32;
+        let cfg = crate::config::load().unwrap_or_default();
+        let action = decide_notification(
+            in_flight,
+            queued,
+            ctx.successes_this_drain.load(Ordering::Relaxed),
+            cfg.notifications_enabled,
+        );
+        if !matches!(action, NotificationAction::None) {
+            ctx.successes_this_drain.store(0, Ordering::Relaxed);
+        }
+        (action, cfg)
+    };
 
     match action {
         NotificationAction::None => {}
@@ -379,7 +400,6 @@ fn on_success(ctx: &WorkerCtx, filename: &str) {
                     filename: filename.to_string(),
                 },
             );
-            ctx.successes_this_drain.store(0, Ordering::Relaxed);
         }
         NotificationAction::Batch(n) => {
             crate::notifier::notify(
@@ -387,7 +407,6 @@ fn on_success(ctx: &WorkerCtx, filename: &str) {
                 &cfg,
                 crate::notifier::NotifyEvent::Batch { count: n },
             );
-            ctx.successes_this_drain.store(0, Ordering::Relaxed);
         }
     }
 }
