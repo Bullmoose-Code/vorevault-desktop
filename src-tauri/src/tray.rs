@@ -135,13 +135,25 @@ fn build_menu(
             let notif =
                 MenuItem::with_id(app, "toggle-notifications", notif_label, true, None::<&str>)?;
 
-            let open_settings = MenuItem::with_id(app, "open-settings", "Open VoreVault…", true, None::<&str>)?;
+            let open_settings =
+                MenuItem::with_id(app, "open-settings", "Open VoreVault…", true, None::<&str>)?;
 
-            let pause_label = if is_paused { "Pause uploads  ✓" } else { "Pause uploads" };
-            let pause_item = MenuItem::with_id(app, "toggle-pause", pause_label, true, None::<&str>)?;
+            let pause_label = if is_paused {
+                "Pause uploads  ✓"
+            } else {
+                "Pause uploads"
+            };
+            let pause_item =
+                MenuItem::with_id(app, "toggle-pause", pause_label, true, None::<&str>)?;
 
             let paused_row = if is_paused {
-                Some(MenuItem::with_id(app, "paused-status", "⏸ Paused", false, None::<&str>)?)
+                Some(MenuItem::with_id(
+                    app,
+                    "paused-status",
+                    "⏸ Paused",
+                    false,
+                    None::<&str>,
+                )?)
             } else {
                 None
             };
@@ -184,7 +196,8 @@ fn build_menu(
                 None::<&str>,
             )?;
             let sep = PredefinedMenuItem::separator(app)?;
-            let open_settings = MenuItem::with_id(app, "open-settings", "Open VoreVault…", true, None::<&str>)?;
+            let open_settings =
+                MenuItem::with_id(app, "open-settings", "Open VoreVault…", true, None::<&str>)?;
             Menu::with_items(app, &[&signed_in, &sep, &open_settings, &quit])
         }
         (None, _) => {
@@ -216,7 +229,10 @@ fn handle_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
             }
             let vault_url = crate::auth::vault_url_from_env();
             refresh_menu(app, &vault_url);
-            log::info!("pipeline {} via tray", if new_paused { "paused" } else { "resumed" });
+            log::info!(
+                "pipeline {} via tray",
+                if new_paused { "paused" } else { "resumed" }
+            );
         }
         "quit" => app.exit(0),
         _ => {}

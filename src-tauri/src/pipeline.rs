@@ -198,7 +198,9 @@ impl PauseGate {
 
 impl Clone for PauseGate {
     fn clone(&self) -> Self {
-        PauseGate { inner: self.inner.clone() }
+        PauseGate {
+            inner: self.inner.clone(),
+        }
     }
 }
 
@@ -654,8 +656,8 @@ mod tests {
 
     #[test]
     fn pause_gate_wait_unblocks_on_resume() {
-        use std::sync::Arc;
         use std::sync::mpsc;
+        use std::sync::Arc;
         let gate = Arc::new(super::PauseGate::new());
         gate.set_paused(true);
 

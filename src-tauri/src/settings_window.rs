@@ -33,7 +33,14 @@ pub fn format_path_for_button(path: &std::path::Path, max_chars: usize) -> Strin
         return s;
     }
     let keep = max_chars.saturating_sub(1);
-    let suffix: String = s.chars().rev().take(keep).collect::<Vec<char>>().into_iter().rev().collect();
+    let suffix: String = s
+        .chars()
+        .rev()
+        .take(keep)
+        .collect::<Vec<char>>()
+        .into_iter()
+        .rev()
+        .collect();
     format!("…{}", suffix)
 }
 
@@ -221,7 +228,10 @@ mod tests {
     fn format_exact_length_path_returns_unchanged() {
         let p = PathBuf::from("/exactly-twenty-eight-chars/");
         assert_eq!(p.display().to_string().chars().count(), 28);
-        assert_eq!(format_path_for_button(&p, 28), "/exactly-twenty-eight-chars/");
+        assert_eq!(
+            format_path_for_button(&p, 28),
+            "/exactly-twenty-eight-chars/"
+        );
     }
 
     #[test]
