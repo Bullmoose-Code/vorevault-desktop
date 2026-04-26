@@ -18,7 +18,8 @@
     "active": true,
     "targets": ["dmg", "msi"],
     "icon": [
-      "icons/tray.png"
+      "icons/tray.png",
+      "icons/icon.ico"
     ],
     "category": "Utility",
     "shortDescription": "Auto-upload to VoreVault",
