@@ -2,6 +2,7 @@
 
 use rusqlite::{params, Connection, OptionalExtension};
 use std::path::Path;
+use std::sync::Mutex;
 
 #[derive(Debug)]
 pub enum DbError {
@@ -25,7 +26,7 @@ impl From<rusqlite::Error> for DbError {
 }
 
 pub struct Db {
-    conn: Connection,
+    conn: Mutex<Connection>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -43,7 +44,7 @@ impl Db {
     pub fn open(dir: &Path) -> Result<Self, DbError> {
         let path = dir.join("uploads.db");
         let conn = Connection::open(&path)?;
-        let db = Db { conn };
+        let db = Db { conn: Mutex::new(conn) };
         db.init_schema()?;
         Ok(db)
     }
@@ -52,13 +53,13 @@ impl Db {
     #[cfg(test)]
     pub fn open_in_memory() -> Result<Self, DbError> {
         let conn = Connection::open_in_memory()?;
-        let db = Db { conn };
+        let db = Db { conn: Mutex::new(conn) };
         db.init_schema()?;
         Ok(db)
     }
 
     fn init_schema(&self) -> Result<(), DbError> {
-        self.conn.execute_batch(
+        self.conn.lock().unwrap().execute_batch(
             r#"
             CREATE TABLE IF NOT EXISTS uploaded_files (
                 path TEXT PRIMARY KEY,
@@ -83,7 +84,7 @@ impl Db {
         size: u64,
         mtime_unix: i64,
     ) -> Result<bool, DbError> {
-        let row: Option<i64> = self.conn.query_row(
+        let row: Option<i64> = self.conn.lock().unwrap().query_row(
             "SELECT 1 FROM uploaded_files WHERE path = ?1 AND size = ?2 AND mtime_unix = ?3",
             params![path, size as i64, mtime_unix],
             |r| r.get(0),
@@ -93,7 +94,7 @@ impl Db {
 
     /// Has any path with this sha256 been uploaded? (Catches renames + duplicate copies.)
     pub fn has_sha256(&self, sha256: &str) -> Result<bool, DbError> {
-        let row: Option<i64> = self.conn.query_row(
+        let row: Option<i64> = self.conn.lock().unwrap().query_row(
             "SELECT 1 FROM uploaded_files WHERE sha256 = ?1",
             params![sha256],
             |r| r.get(0),
@@ -103,7 +104,7 @@ impl Db {
 
     /// Insert (or upsert) a successful upload row.
     pub fn record_upload(&self, row: &UploadedRow) -> Result<(), DbError> {
-        self.conn.execute(
+        self.conn.lock().unwrap().execute(
             r#"
             INSERT INTO uploaded_files (path, size, mtime_unix, sha256, uploaded_at)
             VALUES (?1, ?2, ?3, ?4, ?5)
