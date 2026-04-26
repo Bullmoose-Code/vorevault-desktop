@@ -22,6 +22,37 @@ const BACKOFF: &[Duration] = &[
 pub const SKIPPED_PREFIXES: &[&str] = &["."];
 pub const SKIPPED_SUFFIXES: &[&str] = &[".crdownload", ".part", ".tmp", ".partial"];
 
+/// What kind of notification to fire after a successful upload, given the
+/// current pipeline state. Pure — drives `notifier::notify`.
+#[derive(Debug, PartialEq)]
+#[allow(dead_code)]
+pub enum NotificationAction {
+    None,
+    Single,
+    Batch(u32),
+}
+
+/// Pure decision: should we fire a toast right now, and what kind?
+#[allow(dead_code)]
+pub fn decide_notification(
+    in_flight: u32,
+    queued: u32,
+    successes_this_drain: u32,
+    notifications_enabled: bool,
+) -> NotificationAction {
+    if !notifications_enabled {
+        return NotificationAction::None;
+    }
+    if in_flight + queued > 0 {
+        return NotificationAction::None;
+    }
+    match successes_this_drain {
+        0 => NotificationAction::None,
+        1 => NotificationAction::Single,
+        n => NotificationAction::Batch(n),
+    }
+}
+
 /// Decision for what to do with a candidate upload.
 #[derive(Debug, PartialEq)]
 pub enum UploadDecision {
@@ -385,6 +416,49 @@ mod tests {
         assert_eq!(
             h,
             "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
+        );
+    }
+
+    #[test]
+    fn decide_returns_none_when_disabled() {
+        assert_eq!(
+            decide_notification(0, 0, 5, false),
+            NotificationAction::None
+        );
+    }
+
+    #[test]
+    fn decide_returns_none_with_in_flight() {
+        assert_eq!(decide_notification(1, 0, 5, true), NotificationAction::None);
+    }
+
+    #[test]
+    fn decide_returns_none_with_queued() {
+        assert_eq!(decide_notification(0, 1, 5, true), NotificationAction::None);
+    }
+
+    #[test]
+    fn decide_returns_none_with_zero_successes() {
+        assert_eq!(decide_notification(0, 0, 0, true), NotificationAction::None);
+    }
+
+    #[test]
+    fn decide_returns_single_for_one_success() {
+        assert_eq!(
+            decide_notification(0, 0, 1, true),
+            NotificationAction::Single
+        );
+    }
+
+    #[test]
+    fn decide_returns_batch_for_two_or_more() {
+        assert_eq!(
+            decide_notification(0, 0, 2, true),
+            NotificationAction::Batch(2)
+        );
+        assert_eq!(
+            decide_notification(0, 0, 17, true),
+            NotificationAction::Batch(17)
         );
     }
 }
