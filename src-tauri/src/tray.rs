@@ -119,7 +119,13 @@ fn build_menu(
             } else {
                 None
             };
-            let pick = MenuItem::with_id(app, "pick-folder", "Pick folder…", true, None::<&str>)?;
+            let is_paused = PIPELINE
+                .read()
+                .unwrap()
+                .as_ref()
+                .map(|p| p.is_paused())
+                .unwrap_or(false);
+
             let cfg_for_label = crate::config::load().unwrap_or_default();
             let notif_label = if cfg_for_label.notifications_enabled {
                 "Show notifications: On"
@@ -128,14 +134,29 @@ fn build_menu(
             };
             let notif =
                 MenuItem::with_id(app, "toggle-notifications", notif_label, true, None::<&str>)?;
-            let signout = MenuItem::with_id(app, "sign-out", "Sign out", true, None::<&str>)?;
+
+            let open_settings = MenuItem::with_id(app, "open-settings", "Open VoreVault…", true, None::<&str>)?;
+
+            let pause_label = if is_paused { "Pause uploads  ✓" } else { "Pause uploads" };
+            let pause_item = MenuItem::with_id(app, "toggle-pause", pause_label, true, None::<&str>)?;
+
+            let paused_row = if is_paused {
+                Some(MenuItem::with_id(app, "paused-status", "⏸ Paused", false, None::<&str>)?)
+            } else {
+                None
+            };
+
             let sep1 = PredefinedMenuItem::separator(app)?;
             let sep2 = PredefinedMenuItem::separator(app)?;
+            let sep3 = PredefinedMenuItem::separator(app)?;
 
             // Build the items list dynamically with explicit ownership.
             let mut items: Vec<&dyn tauri::menu::IsMenuItem<Wry>> = vec![&signed_in];
             if let Some(w) = &watching {
                 items.push(w);
+            }
+            if let Some(pr) = &paused_row {
+                items.push(pr);
             }
             if let Some(u) = &uploading {
                 items.push(u);
@@ -144,10 +165,11 @@ fn build_menu(
                 items.push(f);
             }
             items.push(&sep1);
-            items.push(&pick);
             items.push(&notif);
+            items.push(&pause_item);
             items.push(&sep2);
-            items.push(&signout);
+            items.push(&open_settings);
+            items.push(&sep3);
             items.push(&quit);
 
             Menu::with_items(app, &items)
@@ -162,9 +184,8 @@ fn build_menu(
                 None::<&str>,
             )?;
             let sep = PredefinedMenuItem::separator(app)?;
-            let pick = MenuItem::with_id(app, "pick-folder", "Pick folder…", true, None::<&str>)?;
-            let signout = MenuItem::with_id(app, "sign-out", "Sign out", true, None::<&str>)?;
-            Menu::with_items(app, &[&signed_in, &sep, &pick, &signout, &quit])
+            let open_settings = MenuItem::with_id(app, "open-settings", "Open VoreVault…", true, None::<&str>)?;
+            Menu::with_items(app, &[&signed_in, &sep, &open_settings, &quit])
         }
         (None, _) => {
             // Signed out.
@@ -178,9 +199,25 @@ fn build_menu(
 fn handle_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
     match event.id.as_ref() {
         "sign-in" => spawn_sign_in(app.clone()),
-        "sign-out" => spawn_sign_out(app.clone()),
-        "pick-folder" => spawn_pick_folder(app.clone()),
         "toggle-notifications" => spawn_toggle_notifications(app.clone()),
+        "open-settings" => {
+            crate::settings_window::show(app);
+        }
+        "toggle-pause" => {
+            let new_paused;
+            {
+                let guard = PIPELINE.read().unwrap();
+                if let Some(pipeline) = guard.as_ref() {
+                    new_paused = !pipeline.is_paused();
+                    pipeline.set_paused(new_paused);
+                } else {
+                    return;
+                }
+            }
+            let vault_url = crate::auth::vault_url_from_env();
+            refresh_menu(app, &vault_url);
+            log::info!("pipeline {} via tray", if new_paused { "paused" } else { "resumed" });
+        }
         "quit" => app.exit(0),
         _ => {}
     }
@@ -223,26 +260,6 @@ fn spawn_sign_in(app: AppHandle) {
         {
             do_pick_folder(&app);
         }
-    });
-}
-
-fn spawn_sign_out(app: AppHandle) {
-    if !try_acquire_lock() {
-        log::info!("sign-out already in progress; ignoring click");
-        return;
-    }
-    std::thread::spawn(move || {
-        let vault_url = crate::auth::vault_url_from_env();
-        crate::auth::sign_out(&vault_url);
-        refresh_menu(&app, &vault_url);
-        crate::settings_window::emit_state_changed(&app);
-        release_lock();
-    });
-}
-
-fn spawn_pick_folder(app: AppHandle) {
-    std::thread::spawn(move || {
-        do_pick_folder(&app);
     });
 }
 
