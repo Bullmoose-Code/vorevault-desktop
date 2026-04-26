@@ -138,6 +138,7 @@ pub struct PipelineState {
 pub struct Pipeline {
     state: Arc<Mutex<PipelineState>>,
     enqueue: Sender<PathBuf>,
+    pause_gate: PauseGate,
 }
 
 /// Bundle of everything a worker thread needs to process one path.
@@ -153,6 +154,7 @@ struct WorkerCtx {
     notify_lock: Arc<Mutex<()>>,
     watch_folder: String,
     in_forwarder: Arc<AtomicUsize>,
+    pause_gate: PauseGate,
 }
 
 /// Soft-pause gate for worker threads. When paused, workers calling
@@ -212,6 +214,12 @@ impl Pipeline {
     pub fn snapshot(&self) -> PipelineState {
         self.state.lock().unwrap().clone()
     }
+    pub fn set_paused(&self, paused: bool) {
+        self.pause_gate.set_paused(paused);
+    }
+    pub fn is_paused(&self) -> bool {
+        self.pause_gate.is_paused()
+    }
 }
 
 /// Spawn the pipeline. Reads from the watcher channel + the internal enqueue
@@ -233,6 +241,7 @@ pub fn start(
     let successes_this_drain = Arc::new(AtomicU32::new(0));
     let notify_lock = Arc::new(Mutex::new(()));
     let in_forwarder = Arc::new(AtomicUsize::new(0));
+    let pause_gate = PauseGate::new();
 
     // Forwarder: drain watcher_rx + enqueue_rx into a single work_rx.
     let (work_tx, work_rx) = crossbeam_channel::unbounded::<PathBuf>();
@@ -278,9 +287,11 @@ pub fn start(
             notify_lock: notify_lock.clone(),
             watch_folder: watching_path.clone(),
             in_forwarder: in_forwarder.clone(),
+            pause_gate: pause_gate.clone(),
         };
         std::thread::spawn(move || {
             while let Ok(path) = ctx.work_rx.recv() {
+                ctx.pause_gate.wait_while_paused();
                 process_one(&ctx, &path);
             }
         });
@@ -289,6 +300,7 @@ pub fn start(
     Pipeline {
         state,
         enqueue: enqueue_tx,
+        pause_gate,
     }
 }
 
