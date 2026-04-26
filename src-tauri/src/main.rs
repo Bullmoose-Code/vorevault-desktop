@@ -31,6 +31,9 @@ fn main() {
             settings_window::get_state,
             settings_window::get_autostart,
             settings_window::set_autostart,
+            settings_window::change_watch_folder,
+            settings_window::sign_out,
+            settings_window::sign_in,
         ])
         .setup(|app| {
             let handle = app.handle().clone();

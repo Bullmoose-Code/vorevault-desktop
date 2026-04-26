@@ -165,6 +165,47 @@ pub fn set_autostart(app: tauri::AppHandle, enabled: bool) -> Result<(), String>
     res.map_err(|e| format!("autostart write failed: {}", e))
 }
 
+#[tauri::command]
+pub fn change_watch_folder(app: tauri::AppHandle, path: String) -> Result<(), String> {
+    let path_buf = std::path::PathBuf::from(&path);
+    if !path_buf.is_dir() {
+        return Err("can't access that folder".to_string());
+    }
+
+    // Persist to config.
+    let mut cfg = crate::config::load().map_err(|e| format!("config load: {}", e))?;
+    cfg.watch_folder = Some(path.clone());
+    crate::config::save(&cfg).map_err(|e| format!("config save: {}", e))?;
+
+    // Restart the pipeline on the new path. (Task 8's RwLock refactor enables this.)
+    let vault_url = crate::auth::vault_url_from_env();
+    if let Err(e) = crate::start_pipeline_if_configured(&app, &vault_url) {
+        log::warn!("pipeline restart after folder change failed: {}", e);
+    }
+
+    crate::tray::refresh_menu(&app, &vault_url);
+    emit_state_changed(&app);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn sign_out(app: tauri::AppHandle) {
+    let vault_url = crate::auth::vault_url_from_env();
+    crate::auth::sign_out(&vault_url);
+    // Stop pipeline by clearing it.
+    {
+        let mut guard = crate::tray::PIPELINE.write().unwrap();
+        *guard = None;
+    }
+    crate::tray::refresh_menu(&app, &vault_url);
+    emit_state_changed(&app);
+}
+
+#[tauri::command]
+pub fn sign_in(app: tauri::AppHandle) {
+    crate::tray::spawn_sign_in_command(app);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

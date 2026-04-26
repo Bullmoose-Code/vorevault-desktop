@@ -64,6 +64,10 @@ pub fn refresh_menu(app: &AppHandle, vault_url: &str) {
     }
 }
 
+pub fn spawn_sign_in_command(app: tauri::AppHandle) {
+    spawn_sign_in(app);
+}
+
 fn build_menu(
     app: &AppHandle,
     auth: &crate::auth::AuthState,
