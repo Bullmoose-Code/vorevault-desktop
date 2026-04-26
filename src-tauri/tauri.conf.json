@@ -14,7 +14,7 @@
       {
         "label": "settings",
         "title": "VoreVault",
-        "url": "ui/settings.html",
+        "url": "settings.html",
         "width": 480,
         "height": 420,
         "resizable": false,
