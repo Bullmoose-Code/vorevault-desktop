@@ -46,7 +46,7 @@ fn main() {
         });
 }
 
-fn start_pipeline_if_configured(
+pub(crate) fn start_pipeline_if_configured(
     _handle: &tauri::AppHandle,
     vault_url: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {

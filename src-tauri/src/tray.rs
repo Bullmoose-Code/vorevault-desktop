@@ -181,12 +181,30 @@ fn spawn_sign_in(app: AppHandle) {
         let result = crate::auth::sign_in(&vault_url, |url| {
             tauri_plugin_opener::open_url(url, None::<&str>).map_err(|e| e.to_string())
         });
-        match result {
-            Ok(_) => log::info!("sign-in succeeded"),
-            Err(e) => log::warn!("sign-in failed: {}", e),
-        }
+        let signed_in = match result {
+            Ok(_) => {
+                log::info!("sign-in succeeded");
+                true
+            }
+            Err(e) => {
+                log::warn!("sign-in failed: {}", e);
+                false
+            }
+        };
         refresh_menu(&app, &vault_url);
         release_lock();
+
+        // Onboarding: if this is the user's first successful sign-in and no
+        // watch folder is configured yet, immediately prompt them to pick one.
+        if signed_in
+            && PIPELINE.get().is_none()
+            && crate::config::load()
+                .ok()
+                .and_then(|c| c.watch_folder)
+                .is_none()
+        {
+            do_pick_folder(&app);
+        }
     });
 }
 
@@ -205,42 +223,60 @@ fn spawn_sign_out(app: AppHandle) {
 
 fn spawn_pick_folder(app: AppHandle) {
     std::thread::spawn(move || {
-        let path = match crate::dialogs::pick_folder(&app) {
-            Some(p) => p,
-            None => return,
-        };
-
-        let count = count_files_recursive(&path);
-
-        let scan_existing = if count > 0 {
-            crate::dialogs::yes_no(
-                &app,
-                "Upload existing files?",
-                &format!(
-                    "Found {} existing files in this folder. Upload them too?",
-                    count,
-                ),
-            )
-        } else {
-            true
-        };
-
-        let mut cfg = crate::config::load().unwrap_or_default();
-        cfg.watch_folder = Some(path.to_string_lossy().to_string());
-        cfg.scan_existing_on_pick = scan_existing;
-        if let Err(e) = crate::config::save(&cfg) {
-            log::warn!("failed to save config: {}", e);
-            return;
-        }
-
-        log::info!(
-            "watch folder set to {} (restart app to begin watching)",
-            cfg.watch_folder.as_deref().unwrap_or(""),
-        );
-
-        let vault_url = crate::auth::vault_url_from_env();
-        refresh_menu(&app, &vault_url);
+        do_pick_folder(&app);
     });
+}
+
+/// Run the full pick-folder flow synchronously on the calling thread:
+/// open the picker, ask about existing files, save config, start the
+/// pipeline (if not already running), refresh the menu. Caller is
+/// responsible for running this off the main thread.
+fn do_pick_folder(app: &AppHandle) {
+    let path = match crate::dialogs::pick_folder(app) {
+        Some(p) => p,
+        None => return,
+    };
+
+    let count = count_files_recursive(&path);
+
+    let scan_existing = if count > 0 {
+        crate::dialogs::yes_no(
+            app,
+            "Upload existing files?",
+            &format!(
+                "Found {} existing files in this folder. Upload them too?",
+                count,
+            ),
+        )
+    } else {
+        true
+    };
+
+    let mut cfg = crate::config::load().unwrap_or_default();
+    cfg.watch_folder = Some(path.to_string_lossy().to_string());
+    cfg.scan_existing_on_pick = scan_existing;
+    if let Err(e) = crate::config::save(&cfg) {
+        log::warn!("failed to save config: {}", e);
+        return;
+    }
+
+    let vault_url = crate::auth::vault_url_from_env();
+
+    if PIPELINE.get().is_none() {
+        if let Err(e) = crate::start_pipeline_if_configured(app, &vault_url) {
+            log::warn!("could not start pipeline after pick: {}", e);
+        }
+    } else {
+        // OnceLock is one-shot per process. A second pick this session can't
+        // swap the running watcher; user must restart for the new folder to
+        // take effect. Still update the saved config so the next launch uses it.
+        log::warn!(
+            "pipeline already running on a previous folder; \
+             saved new folder to config — restart app to switch"
+        );
+    }
+
+    refresh_menu(app, &vault_url);
 }
 
 fn count_files_recursive(root: &std::path::Path) -> u64 {
