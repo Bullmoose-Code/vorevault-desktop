@@ -37,13 +37,8 @@ fn main() {
 
             Ok(())
         })
-        .build(tauri::generate_context!())
-        .expect("error while running tauri application")
-        .run(|_app_handle, event| {
-            if let tauri::RunEvent::ExitRequested { api, .. } = event {
-                api.prevent_exit();
-            }
-        });
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
 }
 
 pub(crate) fn start_pipeline_if_configured(
