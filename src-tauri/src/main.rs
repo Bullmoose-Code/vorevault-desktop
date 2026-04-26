@@ -4,7 +4,6 @@
 mod auth;
 mod config;
 mod db;
-mod dialogs;
 mod keychain;
 mod notifier;
 mod pipeline;
@@ -38,6 +37,7 @@ fn main() {
         .setup(|app| {
             let handle = app.handle().clone();
             tray::install(&handle)?;
+            crate::settings_window::install_close_handler(&handle);
 
             std::thread::spawn(move || {
                 let vault_url = auth::vault_url_from_env();

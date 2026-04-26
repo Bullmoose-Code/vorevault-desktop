@@ -258,7 +258,7 @@ fn spawn_sign_in(app: AppHandle) {
                 .and_then(|c| c.watch_folder)
                 .is_none()
         {
-            do_pick_folder(&app);
+            crate::settings_window::show_first_run(&app);
         }
     });
 }
@@ -282,77 +282,6 @@ fn spawn_toggle_notifications(app: AppHandle) {
         let vault_url = crate::auth::vault_url_from_env();
         refresh_menu(&app, &vault_url);
     });
-}
-
-/// Run the full pick-folder flow synchronously on the calling thread:
-/// open the picker, ask about existing files, save config, start the
-/// pipeline (if not already running), refresh the menu. Caller is
-/// responsible for running this off the main thread.
-fn do_pick_folder(app: &AppHandle) {
-    let path = match crate::dialogs::pick_folder(app) {
-        Some(p) => p,
-        None => return,
-    };
-
-    let count = count_files_recursive(&path);
-
-    let scan_existing = if count > 0 {
-        crate::dialogs::yes_no(
-            app,
-            "Upload existing files?",
-            &format!(
-                "Found {} existing files in this folder. Upload them too?",
-                count,
-            ),
-        )
-    } else {
-        true
-    };
-
-    let mut cfg = crate::config::load().unwrap_or_default();
-    cfg.watch_folder = Some(path.to_string_lossy().to_string());
-    cfg.scan_existing_on_pick = scan_existing;
-    if let Err(e) = crate::config::save(&cfg) {
-        log::warn!("failed to save config: {}", e);
-        return;
-    }
-
-    let vault_url = crate::auth::vault_url_from_env();
-
-    if PIPELINE.read().unwrap().is_none() {
-        if let Err(e) = crate::start_pipeline_if_configured(app, &vault_url) {
-            log::warn!("could not start pipeline after pick: {}", e);
-        }
-    } else {
-        // Pipeline is already running on a previous folder; replacing it is
-        // handled by change_watch_folder (Task 9). For now, just save config
-        // and let the user restart if needed (this branch is kept as a safety
-        // fallback for callers that haven't yet been wired up to the new path).
-        log::warn!(
-            "pipeline already running on a previous folder; \
-             saved new folder to config — restart app to switch"
-        );
-    }
-
-    refresh_menu(app, &vault_url);
-}
-
-fn count_files_recursive(root: &std::path::Path) -> u64 {
-    fn walk(p: &std::path::Path, n: &mut u64) {
-        if let Ok(entries) = std::fs::read_dir(p) {
-            for e in entries.flatten() {
-                let path = e.path();
-                if path.is_file() {
-                    *n += 1;
-                } else if path.is_dir() {
-                    walk(&path, n);
-                }
-            }
-        }
-    }
-    let mut n = 0u64;
-    walk(root, &mut n);
-    n
 }
 
 fn try_acquire_lock() -> bool {
