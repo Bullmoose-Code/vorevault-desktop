@@ -1,4 +1,4 @@
-use std::sync::{Mutex, OnceLock};
+use std::sync::Mutex;
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::TrayIconBuilder,
@@ -14,10 +14,11 @@ static OP_IN_PROGRESS: Mutex<bool> = Mutex::new(false);
 /// The running pipeline. Set by main.rs after a successful folder-pick
 /// or on startup if a folder is already configured. None if no pipeline
 /// is currently running.
-pub static PIPELINE: OnceLock<crate::pipeline::Pipeline> = OnceLock::new();
+pub static PIPELINE: std::sync::RwLock<Option<crate::pipeline::Pipeline>> =
+    std::sync::RwLock::new(None);
 
 fn read_pipeline_state(_app: &AppHandle) -> Option<crate::pipeline::PipelineState> {
-    PIPELINE.get().map(|p| p.snapshot())
+    PIPELINE.read().unwrap().as_ref().map(|p| p.snapshot())
 }
 
 /// Install the tray icon at app startup. Called from `main.rs` `setup`.
@@ -207,7 +208,7 @@ fn spawn_sign_in(app: AppHandle) {
         // Onboarding: if this is the user's first successful sign-in and no
         // watch folder is configured yet, immediately prompt them to pick one.
         if signed_in
-            && PIPELINE.get().is_none()
+            && PIPELINE.read().unwrap().is_none()
             && crate::config::load()
                 .ok()
                 .and_then(|c| c.watch_folder)
@@ -293,14 +294,15 @@ fn do_pick_folder(app: &AppHandle) {
 
     let vault_url = crate::auth::vault_url_from_env();
 
-    if PIPELINE.get().is_none() {
+    if PIPELINE.read().unwrap().is_none() {
         if let Err(e) = crate::start_pipeline_if_configured(app, &vault_url) {
             log::warn!("could not start pipeline after pick: {}", e);
         }
     } else {
-        // OnceLock is one-shot per process. A second pick this session can't
-        // swap the running watcher; user must restart for the new folder to
-        // take effect. Still update the saved config so the next launch uses it.
+        // Pipeline is already running on a previous folder; replacing it is
+        // handled by change_watch_folder (Task 9). For now, just save config
+        // and let the user restart if needed (this branch is kept as a safety
+        // fallback for callers that haven't yet been wired up to the new path).
         log::warn!(
             "pipeline already running on a previous folder; \
              saved new folder to config — restart app to switch"

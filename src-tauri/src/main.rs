@@ -90,7 +90,7 @@ pub(crate) fn start_pipeline_if_configured(
         scan_and_enqueue(&watch_path, &pipeline);
     }
 
-    let _ = tray::PIPELINE.set(pipeline);
+    *tray::PIPELINE.write().unwrap() = Some(pipeline);
 
     Ok(())
 }

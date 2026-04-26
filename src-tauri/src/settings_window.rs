@@ -82,7 +82,9 @@ pub fn current_state(_app: &tauri::AppHandle) -> SettingsState {
         .map(PathBuf::from);
 
     let paused = crate::tray::PIPELINE
-        .get()
+        .read()
+        .unwrap()
+        .as_ref()
         .map(|p| p.is_paused())
         .unwrap_or(false);
 
