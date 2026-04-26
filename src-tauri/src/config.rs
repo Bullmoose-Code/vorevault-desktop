@@ -10,6 +10,7 @@ pub struct Config {
     pub watch_recursive: bool,
     pub scan_existing_on_pick: bool,
     pub debounce_ms: u64,
+    pub notifications_enabled: bool,
 }
 
 impl Default for Config {
@@ -19,6 +20,7 @@ impl Default for Config {
             watch_recursive: true,
             scan_existing_on_pick: true,
             debounce_ms: 5000,
+            notifications_enabled: true,
         }
     }
 }
@@ -122,6 +124,7 @@ mod tests {
             watch_recursive: true,
             scan_existing_on_pick: false,
             debounce_ms: 3000,
+            notifications_enabled: false,
         };
         save_to(&original, dir.path()).unwrap();
         let loaded = load_from(dir.path()).unwrap();

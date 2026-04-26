@@ -115,6 +115,14 @@ fn build_menu(
                 None
             };
             let pick = MenuItem::with_id(app, "pick-folder", "Pick folder…", true, None::<&str>)?;
+            let cfg_for_label = crate::config::load().unwrap_or_default();
+            let notif_label = if cfg_for_label.notifications_enabled {
+                "Show notifications: On"
+            } else {
+                "Show notifications: Off"
+            };
+            let notif =
+                MenuItem::with_id(app, "toggle-notifications", notif_label, true, None::<&str>)?;
             let signout = MenuItem::with_id(app, "sign-out", "Sign out", true, None::<&str>)?;
             let sep1 = PredefinedMenuItem::separator(app)?;
             let sep2 = PredefinedMenuItem::separator(app)?;
@@ -132,6 +140,7 @@ fn build_menu(
             }
             items.push(&sep1);
             items.push(&pick);
+            items.push(&notif);
             items.push(&sep2);
             items.push(&signout);
             items.push(&quit);
@@ -166,6 +175,7 @@ fn handle_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
         "sign-in" => spawn_sign_in(app.clone()),
         "sign-out" => spawn_sign_out(app.clone()),
         "pick-folder" => spawn_pick_folder(app.clone()),
+        "toggle-notifications" => spawn_toggle_notifications(app.clone()),
         "quit" => app.exit(0),
         _ => {}
     }
@@ -224,6 +234,27 @@ fn spawn_sign_out(app: AppHandle) {
 fn spawn_pick_folder(app: AppHandle) {
     std::thread::spawn(move || {
         do_pick_folder(&app);
+    });
+}
+
+fn spawn_toggle_notifications(app: AppHandle) {
+    std::thread::spawn(move || {
+        let mut cfg = crate::config::load().unwrap_or_default();
+        cfg.notifications_enabled = !cfg.notifications_enabled;
+        if let Err(e) = crate::config::save(&cfg) {
+            log::warn!("failed to save notifications toggle: {}", e);
+            return;
+        }
+        log::info!(
+            "notifications toggled to {}",
+            if cfg.notifications_enabled {
+                "on"
+            } else {
+                "off"
+            }
+        );
+        let vault_url = crate::auth::vault_url_from_env();
+        refresh_menu(&app, &vault_url);
     });
 }
 

@@ -6,6 +6,7 @@ mod config;
 mod db;
 mod dialogs;
 mod keychain;
+mod notifier;
 mod pipeline;
 mod tray;
 mod uploader;
@@ -20,6 +21,7 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             let handle = app.handle().clone();
             tray::install(&handle)?;
@@ -37,17 +39,12 @@ fn main() {
 
             Ok(())
         })
-        .build(tauri::generate_context!())
-        .expect("error while running tauri application")
-        .run(|_app_handle, event| {
-            if let tauri::RunEvent::ExitRequested { api, .. } = event {
-                api.prevent_exit();
-            }
-        });
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
 }
 
 pub(crate) fn start_pipeline_if_configured(
-    _handle: &tauri::AppHandle,
+    handle: &tauri::AppHandle,
     vault_url: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let cfg = config::load()?;
@@ -76,6 +73,7 @@ pub(crate) fn start_pipeline_if_configured(
         vault_url.to_string(),
         token_getter,
         watch_folder.to_string(),
+        handle.clone(),
     );
 
     if cfg.scan_existing_on_pick {
