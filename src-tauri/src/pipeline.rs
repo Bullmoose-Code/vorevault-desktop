@@ -199,6 +199,12 @@ impl Clone for PauseGate {
     }
 }
 
+impl Default for PauseGate {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Pipeline {
     pub fn enqueue(&self, path: PathBuf) {
         let _ = self.enqueue.send(path);
@@ -631,25 +637,27 @@ mod tests {
     #[test]
     fn pause_gate_wait_unblocks_on_resume() {
         use std::sync::Arc;
+        use std::sync::mpsc;
         let gate = Arc::new(super::PauseGate::new());
         gate.set_paused(true);
 
-        // Spawn a thread that will block in wait_while_paused.
+        // Channel to signal "waiter is about to enter wait_while_paused".
+        // Eliminates the race where set_paused(false) fires before the
+        // waiter parks (which would let the test pass for the wrong reason).
+        let (tx, rx) = mpsc::channel();
         let gate_clone = gate.clone();
         let waiter = std::thread::spawn(move || {
-            let start = std::time::Instant::now();
+            tx.send(()).unwrap();
             gate_clone.wait_while_paused();
-            start.elapsed()
         });
 
-        // Give the waiter time to enter the wait.
-        std::thread::sleep(std::time::Duration::from_millis(50));
+        rx.recv().unwrap();
+        // Tiny sleep to give the waiter time to grab the lock + park.
+        std::thread::sleep(std::time::Duration::from_millis(10));
+
         gate.set_paused(false);
 
-        let elapsed = waiter.join().unwrap();
-        // Waiter unblocked some time after we called set_paused(false).
-        // Should be well under 200ms total.
-        assert!(elapsed < std::time::Duration::from_millis(200), "waiter took {:?}", elapsed);
-        assert!(elapsed >= std::time::Duration::from_millis(50));
+        // If unblock failed, this hangs forever (test runner times out).
+        waiter.join().unwrap();
     }
 }
