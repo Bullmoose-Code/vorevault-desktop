@@ -102,6 +102,46 @@ pub fn emit_state_changed(app: &tauri::AppHandle) {
     }
 }
 
+use tauri::Manager;
+
+/// Open the settings window (or focus it if already open). Idempotent.
+pub fn show(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("settings") {
+        if let Err(e) = window.show() {
+            log::warn!("settings window show() failed: {}", e);
+            return;
+        }
+        if let Err(e) = window.set_focus() {
+            log::warn!("settings window set_focus() failed: {}", e);
+        }
+        return;
+    }
+    log::error!("settings window not found in app config");
+}
+
+/// First-run variant: same as show() today. Kept as a separate entry point so
+/// we can later distinguish onboarding telemetry / behaviors if needed.
+pub fn show_first_run(app: &tauri::AppHandle) {
+    show(app);
+}
+
+/// Register the CloseRequested handler that hides instead of closing,
+/// keeping the window object alive and listeners registered. Call this once
+/// at app setup (from main.rs).
+pub fn install_close_handler(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("settings") {
+        let w = window.clone();
+        window.on_window_event(move |event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = w.hide();
+            }
+        });
+    } else {
+        log::warn!("settings window not yet created at install_close_handler time");
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

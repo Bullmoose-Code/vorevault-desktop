@@ -6,10 +6,24 @@
   "build": {
     "beforeBuildCommand": "",
     "beforeDevCommand": "",
-    "frontendDist": "../ui-callback"
+    "frontendDist": "../ui"
   },
   "app": {
-    "windows": [],
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "settings",
+        "title": "VoreVault",
+        "url": "ui/settings.html",
+        "width": 480,
+        "height": 420,
+        "resizable": false,
+        "center": true,
+        "decorations": true,
+        "visible": false,
+        "skipTaskbar": false
+      }
+    ],
     "security": {
       "csp": null
     }
