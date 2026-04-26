@@ -19,7 +19,6 @@ pub enum NotifyEvent {
 }
 
 /// Pure formatter — given an event, return (title, body) for the toast.
-#[allow(dead_code)]
 pub fn title_and_body(event: &NotifyEvent) -> (String, String) {
     match event {
         NotifyEvent::Single { filename } => {
@@ -39,6 +38,38 @@ pub fn title_and_body(event: &NotifyEvent) -> (String, String) {
             "VoreVault — upload failed".to_string(),
             format!("{} in {}", filename, watch_folder),
         ),
+    }
+}
+
+use std::sync::atomic::{AtomicBool, Ordering};
+use tauri::AppHandle;
+use tauri_plugin_notification::NotificationExt;
+
+use crate::config::Config;
+
+/// Tracks whether we've already logged a notification permission warning.
+/// macOS denies notification permission silently after the first prompt;
+/// without this flag we'd spam the log on every upload.
+static PERMISSION_WARNED: AtomicBool = AtomicBool::new(false);
+
+/// Send a toast for the given event. No-ops if `cfg.notifications_enabled`
+/// is false. Errors from the OS plugin are logged at warn (once) and
+/// otherwise swallowed — uploads must keep working regardless of whether
+/// notifications do.
+#[allow(dead_code)]
+pub fn notify(app: &AppHandle, cfg: &Config, event: NotifyEvent) {
+    if !cfg.notifications_enabled {
+        return;
+    }
+    let (title, body) = title_and_body(&event);
+    let result = app.notification().builder().title(title).body(body).show();
+    if let Err(e) = result {
+        if !PERMISSION_WARNED.swap(true, Ordering::Relaxed) {
+            log::warn!(
+                "notification send failed (further failures will be silent): {}",
+                e
+            );
+        }
     }
 }
 
