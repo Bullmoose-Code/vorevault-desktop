@@ -15,7 +15,10 @@ pub struct Debouncer {
 
 impl Debouncer {
     pub fn new(debounce: Duration) -> Self {
-        Self { debounce, pending: HashMap::new() }
+        Self {
+            debounce,
+            pending: HashMap::new(),
+        }
     }
 
     /// Record a fresh event for `path`. Returns nothing — the caller polls
@@ -28,7 +31,8 @@ impl Debouncer {
     /// removing them from the pending set.
     pub fn take_ready(&mut self, now: Instant) -> Vec<PathBuf> {
         let threshold = now.checked_sub(self.debounce).unwrap_or(now);
-        let ready: Vec<PathBuf> = self.pending
+        let ready: Vec<PathBuf> = self
+            .pending
             .iter()
             .filter(|(_, &t)| t <= threshold)
             .map(|(p, _)| p.clone())
@@ -40,6 +44,7 @@ impl Debouncer {
     }
 
     /// How many paths are currently held in the pending map.
+    #[allow(dead_code)] // used by tests; not consumed by the bin target
     pub fn pending_count(&self) -> usize {
         self.pending.len()
     }
@@ -80,11 +85,12 @@ pub fn start(root: PathBuf, debounce_ms: u64) -> Result<Receiver<PathBuf>, Watch
     let (ready_tx, ready_rx) = crossbeam_channel::unbounded::<PathBuf>();
 
     // Build the watcher; closure forwards events via the raw channel.
-    let mut watcher: RecommendedWatcher = notify::recommended_watcher(move |res: notify::Result<Event>| {
-        if let Ok(ev) = res {
-            let _ = raw_tx.send(ev);
-        }
-    })?;
+    let mut watcher: RecommendedWatcher =
+        notify::recommended_watcher(move |res: notify::Result<Event>| {
+            if let Ok(ev) = res {
+                let _ = raw_tx.send(ev);
+            }
+        })?;
 
     watcher.watch(&root, RecursiveMode::Recursive)?;
 

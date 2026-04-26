@@ -143,21 +143,23 @@ mod tests {
         fs::write(dir.path().join("config.json"), "not json {").unwrap();
         let c = load_from(dir.path()).unwrap();
         assert_eq!(c, Config::default());
-        let entries: Vec<_> = fs::read_dir(dir.path()).unwrap()
+        let entries: Vec<_> = fs::read_dir(dir.path())
+            .unwrap()
             .filter_map(|e| e.ok())
             .map(|e| e.file_name().to_string_lossy().into_owned())
             .collect();
         let has_broken_backup = entries.iter().any(|n| n.starts_with("config.json.broken-"));
-        assert!(has_broken_backup, "expected a config.json.broken-* backup, got {:?}", entries);
+        assert!(
+            has_broken_backup,
+            "expected a config.json.broken-* backup, got {:?}",
+            entries
+        );
     }
 
     #[test]
     fn load_accepts_partial_json_and_fills_defaults() {
         let dir = TempDir::new().unwrap();
-        fs::write(
-            dir.path().join("config.json"),
-            r#"{"watch_folder":"/foo"}"#,
-        ).unwrap();
+        fs::write(dir.path().join("config.json"), r#"{"watch_folder":"/foo"}"#).unwrap();
         let c = load_from(dir.path()).unwrap();
         assert_eq!(c.watch_folder, Some("/foo".to_string()));
         assert!(c.watch_recursive);

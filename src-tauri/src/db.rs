@@ -44,7 +44,9 @@ impl Db {
     pub fn open(dir: &Path) -> Result<Self, DbError> {
         let path = dir.join("uploads.db");
         let conn = Connection::open(&path)?;
-        let db = Db { conn: Mutex::new(conn) };
+        let db = Db {
+            conn: Mutex::new(conn),
+        };
         db.init_schema()?;
         Ok(db)
     }
@@ -53,7 +55,9 @@ impl Db {
     #[cfg(test)]
     pub fn open_in_memory() -> Result<Self, DbError> {
         let conn = Connection::open_in_memory()?;
-        let db = Db { conn: Mutex::new(conn) };
+        let db = Db {
+            conn: Mutex::new(conn),
+        };
         db.init_schema()?;
         Ok(db)
     }
@@ -84,21 +88,31 @@ impl Db {
         size: u64,
         mtime_unix: i64,
     ) -> Result<bool, DbError> {
-        let row: Option<i64> = self.conn.lock().unwrap().query_row(
-            "SELECT 1 FROM uploaded_files WHERE path = ?1 AND size = ?2 AND mtime_unix = ?3",
-            params![path, size as i64, mtime_unix],
-            |r| r.get(0),
-        ).optional()?;
+        let row: Option<i64> = self
+            .conn
+            .lock()
+            .unwrap()
+            .query_row(
+                "SELECT 1 FROM uploaded_files WHERE path = ?1 AND size = ?2 AND mtime_unix = ?3",
+                params![path, size as i64, mtime_unix],
+                |r| r.get(0),
+            )
+            .optional()?;
         Ok(row.is_some())
     }
 
     /// Has any path with this sha256 been uploaded? (Catches renames + duplicate copies.)
     pub fn has_sha256(&self, sha256: &str) -> Result<bool, DbError> {
-        let row: Option<i64> = self.conn.lock().unwrap().query_row(
-            "SELECT 1 FROM uploaded_files WHERE sha256 = ?1",
-            params![sha256],
-            |r| r.get(0),
-        ).optional()?;
+        let row: Option<i64> = self
+            .conn
+            .lock()
+            .unwrap()
+            .query_row(
+                "SELECT 1 FROM uploaded_files WHERE sha256 = ?1",
+                params![sha256],
+                |r| r.get(0),
+            )
+            .optional()?;
         Ok(row.is_some())
     }
 
@@ -143,7 +157,9 @@ mod tests {
     #[test]
     fn fresh_db_has_no_rows() {
         let db = Db::open_in_memory().unwrap();
-        assert!(!db.has_path_size_mtime("/tmp/foo.mp4", 1024, 1_700_000_000).unwrap());
+        assert!(!db
+            .has_path_size_mtime("/tmp/foo.mp4", 1024, 1_700_000_000)
+            .unwrap());
         assert!(!db.has_sha256("deadbeef").unwrap());
     }
 
@@ -152,16 +168,24 @@ mod tests {
         let db = Db::open_in_memory().unwrap();
         let row = sample_row();
         db.record_upload(&row).unwrap();
-        assert!(db.has_path_size_mtime(&row.path, row.size, row.mtime_unix).unwrap());
+        assert!(db
+            .has_path_size_mtime(&row.path, row.size, row.mtime_unix)
+            .unwrap());
     }
 
     #[test]
     fn has_path_size_mtime_is_strict_about_all_three_fields() {
         let db = Db::open_in_memory().unwrap();
         db.record_upload(&sample_row()).unwrap();
-        assert!(!db.has_path_size_mtime("/tmp/foo.mp4", 999, 1_700_000_000).unwrap());
-        assert!(!db.has_path_size_mtime("/tmp/foo.mp4", 1024, 9_999_999).unwrap());
-        assert!(!db.has_path_size_mtime("/tmp/bar.mp4", 1024, 1_700_000_000).unwrap());
+        assert!(!db
+            .has_path_size_mtime("/tmp/foo.mp4", 999, 1_700_000_000)
+            .unwrap());
+        assert!(!db
+            .has_path_size_mtime("/tmp/foo.mp4", 1024, 9_999_999)
+            .unwrap());
+        assert!(!db
+            .has_path_size_mtime("/tmp/bar.mp4", 1024, 1_700_000_000)
+            .unwrap());
     }
 
     #[test]
@@ -182,7 +206,9 @@ mod tests {
         row.sha256 = "newhash".to_string();
         row.uploaded_at = 1_700_001_100;
         db.record_upload(&row).unwrap();
-        assert!(db.has_path_size_mtime(&row.path, 2048, 1_700_001_000).unwrap());
+        assert!(db
+            .has_path_size_mtime(&row.path, 2048, 1_700_001_000)
+            .unwrap());
         assert!(db.has_sha256("newhash").unwrap());
         assert!(!db.has_sha256("deadbeef").unwrap());
     }

@@ -76,7 +76,9 @@ pub fn sha256_file(path: &Path) -> std::io::Result<String> {
     let mut buf = [0u8; 16 * 1024];
     loop {
         let n = file.read(&mut buf)?;
-        if n == 0 { break; }
+        if n == 0 {
+            break;
+        }
         hasher.update(&buf[..n]);
     }
     Ok(hex_encode(&hasher.finalize()))
@@ -169,7 +171,10 @@ pub fn start(
         });
     }
 
-    Pipeline { state, enqueue: enqueue_tx }
+    Pipeline {
+        state,
+        enqueue: enqueue_tx,
+    }
 }
 
 fn process_one(
@@ -198,7 +203,9 @@ fn process_one(
     let filename = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
 
     let path_str = path.to_string_lossy().to_string();
-    let cheap = db.has_path_size_mtime(&path_str, size, mtime_unix).unwrap_or(false);
+    let cheap = db
+        .has_path_size_mtime(&path_str, size, mtime_unix)
+        .unwrap_or(false);
 
     match decide(filename, is_regular, is_symlink, size, cheap, None) {
         UploadDecision::Filter => return,
@@ -250,11 +257,21 @@ fn process_one(
             Err(UploadError::TooLarge) => break Err(UploadError::TooLarge),
             Err(e) => {
                 if attempt >= BACKOFF.len() {
-                    log::warn!("giving up on {} after {} attempts: {}", path.display(), attempt + 1, e);
+                    log::warn!(
+                        "giving up on {} after {} attempts: {}",
+                        path.display(),
+                        attempt + 1,
+                        e
+                    );
                     break Err(e);
                 }
                 let delay = BACKOFF[attempt];
-                log::info!("upload failed (attempt {}): {} — retrying in {:?}", attempt + 1, e, delay);
+                log::info!(
+                    "upload failed (attempt {}): {} — retrying in {:?}",
+                    attempt + 1,
+                    e,
+                    delay
+                );
                 std::thread::sleep(delay);
                 attempt += 1;
             }
@@ -365,6 +382,9 @@ mod tests {
         let mut f = std::fs::File::create(&p).unwrap();
         f.write_all(b"hello world").unwrap();
         let h = sha256_file(&p).unwrap();
-        assert_eq!(h, "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9");
+        assert_eq!(
+            h,
+            "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
+        );
     }
 }

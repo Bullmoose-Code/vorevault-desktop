@@ -35,11 +35,15 @@ impl std::fmt::Display for UploadError {
 impl std::error::Error for UploadError {}
 
 impl From<std::io::Error> for UploadError {
-    fn from(e: std::io::Error) -> Self { UploadError::Io(e) }
+    fn from(e: std::io::Error) -> Self {
+        UploadError::Io(e)
+    }
 }
 
 impl From<reqwest::Error> for UploadError {
-    fn from(e: reqwest::Error) -> Self { UploadError::Reqwest(e) }
+    fn from(e: reqwest::Error) -> Self {
+        UploadError::Reqwest(e)
+    }
 }
 
 /// Upload `path` to `<vault_url>/files/` via tus, sending `Cookie: vv_session=<token>`.
@@ -48,12 +52,12 @@ impl From<reqwest::Error> for UploadError {
 pub fn upload_file(vault_url: &str, session_token: &str, path: &Path) -> Result<(), UploadError> {
     let metadata = std::fs::metadata(path)?;
     let size = metadata.len();
-    let filename = path.file_name()
-        .and_then(|s| s.to_str())
-        .ok_or_else(|| UploadError::Io(std::io::Error::new(
+    let filename = path.file_name().and_then(|s| s.to_str()).ok_or_else(|| {
+        UploadError::Io(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
             "filename not valid utf-8",
-        )))?;
+        ))
+    })?;
 
     let upload_url = build_files_url(vault_url);
     let cookie = format!("vv_session={}", session_token);
@@ -64,7 +68,8 @@ pub fn upload_file(vault_url: &str, session_token: &str, path: &Path) -> Result<
         .build()?;
 
     // POST to create the upload.
-    let resp = client.post(&upload_url)
+    let resp = client
+        .post(&upload_url)
         .header("Cookie", &cookie)
         .header("Tus-Resumable", TUS_RESUMABLE)
         .header("Upload-Length", size.to_string())
@@ -82,7 +87,8 @@ pub fn upload_file(vault_url: &str, session_token: &str, path: &Path) -> Result<
         return Err(UploadError::BadStatus(status.as_u16()));
     }
 
-    let location = resp.headers()
+    let location = resp
+        .headers()
         .get("Location")
         .and_then(|v| v.to_str().ok())
         .ok_or(UploadError::NoLocationHeader)?
@@ -97,10 +103,13 @@ pub fn upload_file(vault_url: &str, session_token: &str, path: &Path) -> Result<
         use std::io::Read;
         let to_read = ((size - offset).min(PATCH_CHUNK_SIZE as u64)) as usize;
         let n = file.read(&mut buf[..to_read])?;
-        if n == 0 { break; }
+        if n == 0 {
+            break;
+        }
         let chunk = buf[..n].to_vec();
 
-        let resp = client.patch(&location)
+        let resp = client
+            .patch(&location)
             .header("Cookie", &cookie)
             .header("Tus-Resumable", TUS_RESUMABLE)
             .header("Upload-Offset", offset.to_string())
@@ -138,12 +147,18 @@ mod tests {
 
     #[test]
     fn build_files_url_appends_files_slash() {
-        assert_eq!(build_files_url("https://vault.example.com"), "https://vault.example.com/files/");
+        assert_eq!(
+            build_files_url("https://vault.example.com"),
+            "https://vault.example.com/files/"
+        );
     }
 
     #[test]
     fn build_files_url_strips_trailing_slash_first() {
-        assert_eq!(build_files_url("https://vault.example.com/"), "https://vault.example.com/files/");
+        assert_eq!(
+            build_files_url("https://vault.example.com/"),
+            "https://vault.example.com/files/"
+        );
     }
 
     #[test]
