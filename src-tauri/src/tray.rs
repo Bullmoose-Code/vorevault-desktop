@@ -207,6 +207,9 @@ fn spawn_sign_in(app: AppHandle) {
             }
         };
         refresh_menu(&app, &vault_url);
+        if signed_in {
+            crate::settings_window::emit_state_changed(&app);
+        }
         release_lock();
 
         // Onboarding: if this is the user's first successful sign-in and no
@@ -232,6 +235,7 @@ fn spawn_sign_out(app: AppHandle) {
         let vault_url = crate::auth::vault_url_from_env();
         crate::auth::sign_out(&vault_url);
         refresh_menu(&app, &vault_url);
+        crate::settings_window::emit_state_changed(&app);
         release_lock();
     });
 }

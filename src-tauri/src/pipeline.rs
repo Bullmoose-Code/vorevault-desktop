@@ -139,6 +139,7 @@ pub struct Pipeline {
     state: Arc<Mutex<PipelineState>>,
     enqueue: Sender<PathBuf>,
     pause_gate: PauseGate,
+    app: tauri::AppHandle,
 }
 
 /// Bundle of everything a worker thread needs to process one path.
@@ -215,7 +216,11 @@ impl Pipeline {
         self.state.lock().unwrap().clone()
     }
     pub fn set_paused(&self, paused: bool) {
+        let was = self.pause_gate.is_paused();
         self.pause_gate.set_paused(paused);
+        if was != paused {
+            crate::settings_window::emit_state_changed(&self.app);
+        }
     }
     pub fn is_paused(&self) -> bool {
         self.pause_gate.is_paused()
@@ -301,6 +306,7 @@ pub fn start(
         state,
         enqueue: enqueue_tx,
         pause_gate,
+        app: app.clone(),
     }
 }
 
