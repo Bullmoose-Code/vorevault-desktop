@@ -1,0 +1,27 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "VoreVault",
+  "version": "0.1.0",
+  "identifier": "fn.bullmoose.vorevault.desktop",
+  "build": {
+    "beforeBuildCommand": "",
+    "beforeDevCommand": "",
+    "frontendDist": "../ui-callback"
+  },
+  "app": {
+    "windows": [],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["dmg", "msi"],
+    "icon": [
+      "icons/tray.png"
+    ],
+    "category": "Utility",
+    "shortDescription": "Auto-upload to VoreVault",
+    "longDescription": "Watches a folder and uploads new files to your VoreVault instance."
+  }
+}
