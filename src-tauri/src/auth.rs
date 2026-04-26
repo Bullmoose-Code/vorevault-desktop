@@ -210,6 +210,103 @@ fn exchange_code(vault_url: &str, code: &str, code_verifier: &str) -> Result<Str
     Ok(parsed.session_token)
 }
 
+/// Snapshot of the desktop's auth state, derived from keychain + a server check.
+#[derive(Debug, Clone)]
+pub struct AuthState {
+    pub username: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct MeResponse {
+    user: Option<MeUser>,
+}
+
+#[derive(Debug, Deserialize)]
+struct MeUser {
+    #[allow(dead_code)]
+    id: String,
+    username: String,
+    #[allow(dead_code)]
+    is_admin: bool,
+}
+
+/// Resolve the current auth state by checking the keychain, then asking the
+/// server whether the stored session is still valid.
+///
+/// - No keychain entry → `{username: None}`
+/// - Keychain entry, server returns 200 → `{username: Some(...)}`
+/// - Keychain entry, server returns 401 → delete keychain, `{username: None}`
+/// - Keychain entry, network/other error → preserve keychain, `{username: None}`
+///   (transient state; we'll recheck on the next launch)
+pub fn current_state(vault_url: &str) -> AuthState {
+    let token = match crate::keychain::load() {
+        Ok(Some(t)) => t,
+        Ok(None) => return AuthState { username: None },
+        Err(e) => {
+            log::warn!("keychain load failed: {}", e);
+            return AuthState { username: None };
+        }
+    };
+
+    let url = format!("{}/api/auth/me", vault_url.trim_end_matches('/'));
+    let cookie = format!("vv_session={}", token);
+    let client = match reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()
+    {
+        Ok(c) => c,
+        Err(e) => {
+            log::warn!("reqwest client build failed: {}", e);
+            return AuthState { username: None };
+        }
+    };
+
+    let resp = match client.get(&url).header("Cookie", cookie).send() {
+        Ok(r) => r,
+        Err(e) => {
+            log::warn!("/api/auth/me request failed: {}", e);
+            return AuthState { username: None };
+        }
+    };
+
+    if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+        let _ = crate::keychain::delete();
+        return AuthState { username: None };
+    }
+
+    if !resp.status().is_success() {
+        log::warn!("/api/auth/me returned {}", resp.status());
+        return AuthState { username: None };
+    }
+
+    match resp.json::<MeResponse>() {
+        Ok(MeResponse { user: Some(u) }) => AuthState { username: Some(u.username) },
+        Ok(MeResponse { user: None }) => AuthState { username: None },
+        Err(e) => {
+            log::warn!("failed to parse /api/auth/me response: {}", e);
+            AuthState { username: None }
+        }
+    }
+}
+
+/// Sign out: best-effort POST to /api/auth/logout, then delete the keychain
+/// entry regardless of whether the server call succeeded. Local sign-out
+/// always works — the worst case is a stale session row that the server's
+/// 30-day expiry will eventually GC.
+pub fn sign_out(vault_url: &str) {
+    if let Ok(Some(token)) = crate::keychain::load() {
+        let url = format!("{}/api/auth/logout", vault_url.trim_end_matches('/'));
+        let cookie = format!("vv_session={}", token);
+        if let Ok(client) = reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(5))
+            .build()
+        {
+            let _ = client.post(&url).header("Cookie", cookie).send();
+        }
+    }
+    let _ = crate::keychain::delete();
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
