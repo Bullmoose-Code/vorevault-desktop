@@ -155,6 +155,50 @@ struct WorkerCtx {
     in_forwarder: Arc<AtomicUsize>,
 }
 
+/// Soft-pause gate for worker threads. When paused, workers calling
+/// `wait_while_paused` block until `set_paused(false)` is called. In-flight
+/// uploads are not interrupted — they finish naturally before the next
+/// `wait_while_paused` call.
+pub struct PauseGate {
+    inner: std::sync::Arc<(std::sync::Mutex<bool>, std::sync::Condvar)>,
+}
+
+impl PauseGate {
+    pub fn new() -> Self {
+        PauseGate {
+            inner: std::sync::Arc::new((std::sync::Mutex::new(false), std::sync::Condvar::new())),
+        }
+    }
+
+    pub fn set_paused(&self, paused: bool) {
+        let (lock, cvar) = &*self.inner;
+        *lock.lock().unwrap() = paused;
+        if !paused {
+            cvar.notify_all();
+        }
+    }
+
+    pub fn is_paused(&self) -> bool {
+        let (lock, _) = &*self.inner;
+        *lock.lock().unwrap()
+    }
+
+    /// Block while paused. Returns immediately if not paused.
+    pub fn wait_while_paused(&self) {
+        let (lock, cvar) = &*self.inner;
+        let mut paused = lock.lock().unwrap();
+        while *paused {
+            paused = cvar.wait(paused).unwrap();
+        }
+    }
+}
+
+impl Clone for PauseGate {
+    fn clone(&self) -> Self {
+        PauseGate { inner: self.inner.clone() }
+    }
+}
+
 impl Pipeline {
     pub fn enqueue(&self, path: PathBuf) {
         let _ = self.enqueue.send(path);
@@ -559,5 +603,53 @@ mod tests {
             decide_notification(0, 0, 17, true),
             NotificationAction::Batch(17)
         );
+    }
+
+    #[test]
+    fn pause_gate_starts_unpaused() {
+        let gate = super::PauseGate::new();
+        assert!(!gate.is_paused());
+    }
+
+    #[test]
+    fn pause_gate_set_paused_flips_state() {
+        let gate = super::PauseGate::new();
+        gate.set_paused(true);
+        assert!(gate.is_paused());
+        gate.set_paused(false);
+        assert!(!gate.is_paused());
+    }
+
+    #[test]
+    fn pause_gate_wait_returns_immediately_when_unpaused() {
+        let gate = super::PauseGate::new();
+        let start = std::time::Instant::now();
+        gate.wait_while_paused();
+        assert!(start.elapsed() < std::time::Duration::from_millis(50));
+    }
+
+    #[test]
+    fn pause_gate_wait_unblocks_on_resume() {
+        use std::sync::Arc;
+        let gate = Arc::new(super::PauseGate::new());
+        gate.set_paused(true);
+
+        // Spawn a thread that will block in wait_while_paused.
+        let gate_clone = gate.clone();
+        let waiter = std::thread::spawn(move || {
+            let start = std::time::Instant::now();
+            gate_clone.wait_while_paused();
+            start.elapsed()
+        });
+
+        // Give the waiter time to enter the wait.
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        gate.set_paused(false);
+
+        let elapsed = waiter.join().unwrap();
+        // Waiter unblocked some time after we called set_paused(false).
+        // Should be well under 200ms total.
+        assert!(elapsed < std::time::Duration::from_millis(200), "waiter took {:?}", elapsed);
+        assert!(elapsed >= std::time::Duration::from_millis(50));
     }
 }
