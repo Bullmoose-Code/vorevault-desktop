@@ -8,6 +8,7 @@ mod dialogs;
 mod keychain;
 mod notifier;
 mod pipeline;
+mod settings_window;
 mod tray;
 mod uploader;
 mod watcher;
