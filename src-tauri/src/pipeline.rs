@@ -384,7 +384,10 @@ fn on_success(ctx: &WorkerCtx, filename: &str) {
             ctx.successes_this_drain.load(Ordering::Relaxed),
             cfg.notifications_enabled,
         );
-        if !matches!(action, NotificationAction::None) {
+        // Reset on fire OR when notifications are disabled — the spec calls
+        // for "no retroactive toast for files uploaded while Off", so we
+        // discard banked successes whenever the toggle is off.
+        if !matches!(action, NotificationAction::None) || !cfg.notifications_enabled {
             ctx.successes_this_drain.store(0, Ordering::Relaxed);
         }
         (action, cfg)
