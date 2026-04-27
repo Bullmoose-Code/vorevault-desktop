@@ -1,0 +1,11 @@
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-updater-install-and-restart"
+description = "Enables the updater_install_and_restart command without any pre-configured scope."
+commands.allow = ["updater_install_and_restart"]
+
+[[permission]]
+identifier = "deny-updater-install-and-restart"
+description = "Denies the updater_install_and_restart command without any pre-configured scope."
+commands.deny = ["updater_install_and_restart"]
