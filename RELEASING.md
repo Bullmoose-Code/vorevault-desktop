@@ -13,6 +13,8 @@ See `docs/superpowers/specs/2026-04-26-desktop-watcher-subproject-e-design.md` (
 
 ## Cutting a release
 
+> ⚠ **The tag name MUST match the version in `tauri.conf.json` and `Cargo.toml`.** If they differ (e.g., bumped to `0.5.1` but tagged `v0.5.2`), the artifact filenames will be wrong and the updater manifest's version field will mismatch the actual binary version. Installed clients will either skip the update or fail signature verification. Double-check before pushing the tag.
+
 1. **Bump the version in 3 files.** Pick the new version (e.g., `0.5.1`):
    - `src-tauri/tauri.conf.json` — `"version": "0.5.1"`
    - `src-tauri/Cargo.toml` — `version = "0.5.1"`

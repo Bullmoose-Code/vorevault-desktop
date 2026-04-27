@@ -64,7 +64,6 @@ impl UpdaterState {
 /// Process-wide updater state cell. Startup task and the 3 Tauri commands
 /// all read/write through this. Lock contention is negligible (transitions
 /// are infrequent and the lock is held for microseconds).
-#[allow(dead_code)]
 static STATE: RwLock<UpdaterState> = RwLock::new(UpdaterState::Idle);
 
 /// Read the current state (snapshot).

@@ -160,11 +160,11 @@ function renderUpdates(updaterState, currentVersion) {
   const restartVisible = kind === "Ready";
 
   if (!restartVisible) {
-    const checkBtn = mkBtn("check now", "brand-btn-secondary", onCheckNow);
+    const checkBtn = mkBtn("check now", "btn", onCheckNow);
     if (!checkEnabled) checkBtn.disabled = true;
     btnRow.appendChild(checkBtn);
   } else {
-    const restartBtn = mkBtn("restart now", "brand-btn-primary", onRestartNow);
+    const restartBtn = mkBtn("restart now", "btn btn-go", onRestartNow);
     btnRow.appendChild(restartBtn);
   }
   ctrl.appendChild(btnRow);
