@@ -9,6 +9,9 @@ concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
+permissions:
+  contents: write
+
 jobs:
   build:
     name: Build & upload (${{ matrix.platform }})
