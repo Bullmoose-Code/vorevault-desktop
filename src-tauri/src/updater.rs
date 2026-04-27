@@ -58,6 +58,34 @@ impl UpdaterState {
     }
 }
 
+use std::sync::RwLock;
+use tauri::{AppHandle, Emitter};
+
+/// Process-wide updater state cell. Startup task and the 3 Tauri commands
+/// all read/write through this. Lock contention is negligible (transitions
+/// are infrequent and the lock is held for microseconds).
+#[allow(dead_code)]
+static STATE: RwLock<UpdaterState> = RwLock::new(UpdaterState::Idle);
+
+/// Read the current state (snapshot).
+#[allow(dead_code)]
+pub fn snapshot() -> UpdaterState {
+    STATE.read().expect("updater STATE lock poisoned").clone()
+}
+
+/// Replace the state and emit `updater:state-changed` to all webviews.
+/// All transitions go through this so JS always sees changes.
+#[allow(dead_code)]
+pub fn set_state(app: &AppHandle, new_state: UpdaterState) {
+    {
+        let mut guard = STATE.write().expect("updater STATE lock poisoned");
+        *guard = new_state.clone();
+    }
+    if let Err(e) = app.emit("updater:state-changed", &new_state) {
+        log::warn!("updater: failed to emit state-changed event: {}", e);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
