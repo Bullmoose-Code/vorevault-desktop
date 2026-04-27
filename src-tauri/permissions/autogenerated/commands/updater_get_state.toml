@@ -1,0 +1,11 @@
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-updater-get-state"
+description = "Enables the updater_get_state command without any pre-configured scope."
+commands.allow = ["updater_get_state"]
+
+[[permission]]
+identifier = "deny-updater-get-state"
+description = "Denies the updater_get_state command without any pre-configured scope."
+commands.deny = ["updater_get_state"]

@@ -8,24 +8,29 @@ const REPORT_URL = "https://github.com/Bullmoose-Code/vorevault-desktop/issues/n
 
 let autostartEnabled = false;
 let signedIn = false;
+let currentUpdaterState = { kind: "Idle", value: "" };
 
 async function loadAndRender() {
-  let state, autostart;
+  let state, autostart, updaterState;
   try {
     state = await tCore.invoke("get_state");
   } catch (e) {
-    console.error("get_state failed", e);
-    renderError();
+    renderError("couldn't load settings: " + (e?.message || e));
     return;
   }
   try {
     autostart = await tCore.invoke("get_autostart");
   } catch (e) {
-    console.warn("get_autostart failed", e);
-    autostart = false;
+    autostart = { enabled: false, error: e?.message || String(e) };
+  }
+  try {
+    updaterState = await tCore.invoke("updater_get_state");
+  } catch (e) {
+    updaterState = { kind: "Error", value: e?.message || String(e) };
   }
   autostartEnabled = !!autostart;
   signedIn = !!state.username;
+  currentUpdaterState = updaterState;
   render(state);
 }
 
@@ -34,6 +39,7 @@ function render(state) {
   renderFolder(state);
   renderAutostart();
   renderVersion(state);
+  renderUpdates(currentUpdaterState, state.version);
 }
 
 function renderAccount(state) {
@@ -99,13 +105,85 @@ function renderVersion(state) {
   document.getElementById("ctrl-version").textContent = "v" + state.version;
 }
 
-function renderError() {
+function renderError(msg) {
   const root = document.getElementById("root");
   root.replaceChildren();
   const div = document.createElement("div");
   div.className = "error-banner";
-  div.textContent = "VoreVault — couldn't load settings, please reopen.";
+  div.textContent = msg || "VoreVault — couldn't load settings, please reopen.";
   root.appendChild(div);
+}
+
+function renderUpdates(updaterState, currentVersion) {
+  const ctrl = document.getElementById("ctrl-updates");
+  if (!ctrl) return;
+  ctrl.replaceChildren();
+
+  const status = document.createElement("span");
+  status.className = "updates-status";
+
+  const kind = updaterState?.kind || "Idle";
+  const value = updaterState?.value || "";
+
+  let statusText;
+  let isError = false;
+  switch (kind) {
+    case "Idle":
+    case "UpToDate":
+      statusText = `up to date · v${currentVersion}`;
+      break;
+    case "Checking":
+      statusText = "checking…";
+      break;
+    case "DownloadingUpdate":
+      statusText = `downloading v${value} in background`;
+      break;
+    case "Ready":
+      statusText = `update v${value} ready — restart to apply`;
+      break;
+    case "Error":
+      statusText = `couldn't check (${value}) · retry`;
+      isError = true;
+      break;
+    default:
+      statusText = `unknown state: ${kind}`;
+      isError = true;
+  }
+  if (isError) status.classList.add("error");
+  status.textContent = statusText;
+  ctrl.appendChild(status);
+
+  const btnRow = document.createElement("span");
+  btnRow.className = "updates-buttons";
+
+  const checkEnabled = kind === "Idle" || kind === "UpToDate" || kind === "Error";
+  const restartVisible = kind === "Ready";
+
+  if (!restartVisible) {
+    const checkBtn = mkBtn("check now", "btn", onCheckNow);
+    if (!checkEnabled) checkBtn.disabled = true;
+    btnRow.appendChild(checkBtn);
+  } else {
+    const restartBtn = mkBtn("restart now", "btn btn-go", onRestartNow);
+    btnRow.appendChild(restartBtn);
+  }
+  ctrl.appendChild(btnRow);
+}
+
+async function onCheckNow() {
+  try {
+    await tCore.invoke("updater_check_now");
+  } catch (e) {
+    console.error("updater_check_now failed:", e);
+  }
+}
+
+async function onRestartNow() {
+  try {
+    await tCore.invoke("updater_install_and_restart");
+  } catch (e) {
+    console.error("updater_install_and_restart failed:", e);
+  }
 }
 
 function mkBtn(label, cls, onClick) {
@@ -166,9 +244,12 @@ document.getElementById("report-issue").addEventListener("click", async (e) => {
 });
 
 // Re-render on backend state pushes.
-tEvent.listen("settings:state-changed", (evt) => {
-  signedIn = !!evt.payload.username;
-  render(evt.payload);
+tEvent.listen("settings:state-changed", () => {
+  loadAndRender();
+});
+
+tEvent.listen("updater:state-changed", () => {
+  loadAndRender();
 });
 
 // Initial paint.

@@ -9,6 +9,7 @@ mod notifier;
 mod pipeline;
 mod settings_window;
 mod tray;
+mod updater;
 mod uploader;
 mod watcher;
 
@@ -26,6 +27,7 @@ fn main() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
         ))
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             settings_window::get_state,
             settings_window::get_autostart,
@@ -33,11 +35,15 @@ fn main() {
             settings_window::change_watch_folder,
             settings_window::sign_out,
             settings_window::sign_in,
+            updater::updater_get_state,
+            updater::updater_check_now,
+            updater::updater_install_and_restart,
         ])
         .setup(|app| {
             let handle = app.handle().clone();
             tray::install(&handle)?;
             crate::settings_window::install_close_handler(&handle);
+            crate::updater::spawn_startup_check(handle.clone());
 
             std::thread::spawn(move || {
                 let vault_url = auth::vault_url_from_env();
