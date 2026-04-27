@@ -166,7 +166,6 @@ pub fn updater_install_and_restart(app: AppHandle) {
 /// Spawn the post-startup check. Called from main.rs setup.
 /// Sleeps 5s on a worker thread (no tokio direct dep needed) and then runs
 /// one async check via `block_on` on that thread.
-#[allow(dead_code)]
 pub fn spawn_startup_check(app: AppHandle) {
     std::thread::spawn(move || {
         std::thread::sleep(std::time::Duration::from_secs(5));

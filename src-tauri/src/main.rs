@@ -43,6 +43,7 @@ fn main() {
             let handle = app.handle().clone();
             tray::install(&handle)?;
             crate::settings_window::install_close_handler(&handle);
+            crate::updater::spawn_startup_check(handle.clone());
 
             std::thread::spawn(move || {
                 let vault_url = auth::vault_url_from_env();
