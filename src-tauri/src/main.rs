@@ -9,6 +9,7 @@ mod notifier;
 mod pipeline;
 mod settings_window;
 mod tray;
+mod updater;
 mod uploader;
 mod watcher;
 
