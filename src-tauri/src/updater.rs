@@ -123,7 +123,10 @@ async fn run_check(app: AppHandle) {
 
     let target_version = update.version.clone();
     log::info!("updater: downloading v{}", target_version);
-    set_state(&app, UpdaterState::DownloadingUpdate(target_version.clone()));
+    set_state(
+        &app,
+        UpdaterState::DownloadingUpdate(target_version.clone()),
+    );
 
     // download_and_install stages the new installer; the actual swap happens
     // when the app exits (Tauri plugin handles per-platform install on quit).
@@ -180,7 +183,10 @@ mod tests {
 
     #[test]
     fn status_text_idle_shows_current_version() {
-        assert_eq!(UpdaterState::Idle.status_text("0.5.0"), "up to date · v0.5.0");
+        assert_eq!(
+            UpdaterState::Idle.status_text("0.5.0"),
+            "up to date · v0.5.0"
+        );
     }
 
     #[test]
