@@ -3,6 +3,9 @@
 //! docs/superpowers/specs/2026-04-26-desktop-watcher-subproject-e-design.md.
 
 use serde::Serialize;
+use std::sync::RwLock;
+use tauri::{AppHandle, Emitter};
+use tauri_plugin_updater::UpdaterExt;
 
 /// Single source of truth pushed to the settings window's JS layer on every
 /// updater state change. JS re-renders the Updates row on each event.
@@ -58,9 +61,6 @@ impl UpdaterState {
     }
 }
 
-use std::sync::RwLock;
-use tauri::{AppHandle, Emitter};
-
 /// Process-wide updater state cell. Startup task and the 3 Tauri commands
 /// all read/write through this. Lock contention is negligible (transitions
 /// are infrequent and the lock is held for microseconds).
@@ -68,14 +68,12 @@ use tauri::{AppHandle, Emitter};
 static STATE: RwLock<UpdaterState> = RwLock::new(UpdaterState::Idle);
 
 /// Read the current state (snapshot).
-#[allow(dead_code)]
 pub fn snapshot() -> UpdaterState {
     STATE.read().expect("updater STATE lock poisoned").clone()
 }
 
 /// Replace the state and emit `updater:state-changed` to all webviews.
 /// All transitions go through this so JS always sees changes.
-#[allow(dead_code)]
 pub fn set_state(app: &AppHandle, new_state: UpdaterState) {
     {
         let mut guard = STATE.write().expect("updater STATE lock poisoned");
@@ -84,6 +82,97 @@ pub fn set_state(app: &AppHandle, new_state: UpdaterState) {
     if let Err(e) = app.emit("updater:state-changed", &new_state) {
         log::warn!("updater: failed to emit state-changed event: {}", e);
     }
+}
+
+/// Internal helper: run one updater check, transition state through the cycle.
+/// Used by both the manual `updater_check_now` command and the startup task.
+async fn run_check(app: AppHandle) {
+    // Drop concurrent invocations: if a check or download is already in flight,
+    // do nothing. The settings UI disables the button when state isn't terminal,
+    // but the check is racy across threads, so this guard is the source of truth.
+    if matches!(
+        snapshot(),
+        UpdaterState::Checking | UpdaterState::DownloadingUpdate(_)
+    ) {
+        return;
+    }
+    set_state(&app, UpdaterState::Checking);
+
+    let updater = match app.updater() {
+        Ok(u) => u,
+        Err(e) => {
+            log::error!("updater: handle unavailable: {}", e);
+            set_state(&app, UpdaterState::Error("plugin unavailable".to_string()));
+            return;
+        }
+    };
+
+    let maybe_update = match updater.check().await {
+        Ok(u) => u,
+        Err(e) => {
+            log::warn!("updater: check failed: {}", e);
+            set_state(&app, UpdaterState::Error(format!("{}", e)));
+            return;
+        }
+    };
+
+    let Some(update) = maybe_update else {
+        set_state(&app, UpdaterState::UpToDate);
+        return;
+    };
+
+    let target_version = update.version.clone();
+    log::info!("updater: downloading v{}", target_version);
+    set_state(&app, UpdaterState::DownloadingUpdate(target_version.clone()));
+
+    // download_and_install stages the new installer; the actual swap happens
+    // when the app exits (Tauri plugin handles per-platform install on quit).
+    let result = update
+        .download_and_install(|_chunk, _total| {}, || {})
+        .await;
+
+    match result {
+        Ok(()) => {
+            log::info!("updater: v{} downloaded and staged", target_version);
+            set_state(&app, UpdaterState::Ready(target_version));
+        }
+        Err(e) => {
+            log::warn!("updater: download/install failed: {}", e);
+            set_state(&app, UpdaterState::Error(format!("download failed: {}", e)));
+        }
+    }
+}
+
+/// Get current state. Settings window calls this on open to render initial UI.
+#[tauri::command]
+pub fn updater_get_state() -> UpdaterState {
+    snapshot()
+}
+
+/// Manually trigger a check. Settings window's "Check now" button calls this.
+#[tauri::command]
+pub async fn updater_check_now(app: AppHandle) {
+    run_check(app).await;
+}
+
+/// Restart the app to apply a staged update.
+/// Only meaningful when state is `Ready(_)`; safe to call in other states.
+#[tauri::command]
+pub fn updater_install_and_restart(app: AppHandle) {
+    log::info!("updater: restart requested");
+    app.restart();
+}
+
+/// Spawn the post-startup check. Called from main.rs setup.
+/// Sleeps 5s on a worker thread (no tokio direct dep needed) and then runs
+/// one async check via `block_on` on that thread.
+#[allow(dead_code)]
+pub fn spawn_startup_check(app: AppHandle) {
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_secs(5));
+        log::info!("updater: running startup check");
+        tauri::async_runtime::block_on(run_check(app));
+    });
 }
 
 #[cfg(test)]

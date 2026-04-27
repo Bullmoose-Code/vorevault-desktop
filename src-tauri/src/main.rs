@@ -35,6 +35,9 @@ fn main() {
             settings_window::change_watch_folder,
             settings_window::sign_out,
             settings_window::sign_in,
+            updater::updater_get_state,
+            updater::updater_check_now,
+            updater::updater_install_and_restart,
         ])
         .setup(|app| {
             let handle = app.handle().clone();
