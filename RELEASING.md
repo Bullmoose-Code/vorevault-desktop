@@ -48,10 +48,12 @@ See `docs/superpowers/specs/2026-04-26-desktop-watcher-subproject-e-design.md` (
 
 ## Pre-release / RC tags
 
-For testing the release workflow without affecting installed users, use tags with a `-` suffix (e.g., `v0.5.1-rc.1`). The workflow detects this and marks the GitHub Release as **prerelease**. The updater endpoint `/releases/latest/download/latest.json` excludes prereleases, so installed users never pick them up.
+For testing the release workflow without affecting installed users, use tags with a **numeric-only** prerelease identifier (e.g., `v0.5.1-1`, `v0.5.1-2`). The workflow detects the `-` and marks the GitHub Release as **prerelease**. The updater endpoint `/releases/latest/download/latest.json` excludes prereleases, so installed users never pick them up.
+
+> ⚠ **The prerelease identifier MUST be numeric-only** (and ≤ 65535). The Windows MSI bundler rejects alphabetic identifiers like `-rc.1`/`-beta.2` with: *"optional pre-release identifier in app version must be numeric-only and cannot be greater than 65535 for msi target"*. Stick to bare integers: `-1`, `-2`, etc. (We hit this on the first attempt at v0.5.0-rc.1.)
 
 When the RC validates, either:
-- Flip the prerelease flag off in the GitHub Releases UI (`gh release edit v0.5.1-rc.1 --prerelease=false`), OR
+- Flip the prerelease flag off in the GitHub Releases UI (`gh release edit v0.5.1-1 --prerelease=false`), OR
 - Bump to the final version and tag `v0.5.1` directly (preferred — cleaner release page).
 
 ## If things go wrong
