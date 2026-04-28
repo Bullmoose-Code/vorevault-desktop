@@ -145,7 +145,11 @@ mod tests {
         fs::write(&p, b"x").unwrap();
 
         // Set FILE_ATTRIBUTE_HIDDEN via WinAPI.
-        let wide: Vec<u16> = p.as_os_str().encode_wide().chain(std::iter::once(0)).collect();
+        let wide: Vec<u16> = p
+            .as_os_str()
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
         unsafe {
             extern "system" {
                 fn SetFileAttributesW(path: *const u16, attrs: u32) -> i32;

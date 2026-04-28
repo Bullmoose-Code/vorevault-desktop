@@ -45,6 +45,7 @@ fn main() {
             tray::install(&handle)?;
             crate::settings_window::install_close_handler(&handle);
             crate::updater::spawn_startup_check(handle.clone());
+            try_enable_autostart_on_first_launch(&handle);
 
             std::thread::spawn(move || {
                 let vault_url = auth::vault_url_from_env();
@@ -103,6 +104,36 @@ pub(crate) fn start_pipeline_if_configured(
     *tray::PIPELINE.write().unwrap() = Some(pipeline);
 
     Ok(())
+}
+
+/// On the very first launch after install (config has `first_launch_done: false`),
+/// enable autostart. Records `first_launch_done = true` so subsequent launches
+/// respect the user's later choices in settings. Failures are logged and
+/// non-fatal — the app continues to launch normally.
+fn try_enable_autostart_on_first_launch(handle: &tauri::AppHandle) {
+    let mut cfg = match config::load() {
+        Ok(c) => c,
+        Err(e) => {
+            log::warn!("first-launch autostart: could not load config: {}", e);
+            return;
+        }
+    };
+
+    if cfg.first_launch_done {
+        return;
+    }
+
+    use tauri_plugin_autostart::ManagerExt;
+    if let Err(e) = handle.autolaunch().enable() {
+        log::warn!("first-launch autostart: enable failed: {}", e);
+    } else {
+        log::info!("first-launch autostart: enabled");
+    }
+
+    cfg.first_launch_done = true;
+    if let Err(e) = config::save(&cfg) {
+        log::warn!("first-launch autostart: could not save flag: {}", e);
+    }
 }
 
 fn scan_and_enqueue(root: &std::path::Path, pipeline: &pipeline::Pipeline) {
