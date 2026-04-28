@@ -17,21 +17,26 @@ jobs:
     name: Create draft release
     runs-on: ubuntu-latest
     outputs:
-      release_id: ${{ steps.create-release.outputs.releaseId }}
+      release_id: ${{ steps.create-release.outputs.result }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Create draft release
         id: create-release
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: actions/github-script@v7
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: 'VoreVault Desktop ${{ github.ref_name }}'
-          releaseBody: ''
-          releaseDraft: true
-          prerelease: ${{ contains(github.ref_name, '-') }}
+          script: |
+            const tag = context.ref.replace('refs/tags/', '');
+            const { data } = await github.rest.repos.createRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: tag,
+              name: `VoreVault Desktop ${tag}`,
+              body: '',
+              draft: true,
+              prerelease: tag.includes('-'),
+            });
+            return data.id;
 
   build:
     name: Build & upload (${{ matrix.platform }})
