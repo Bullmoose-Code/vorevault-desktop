@@ -11,6 +11,7 @@ pub struct Config {
     pub scan_existing_on_pick: bool,
     pub debounce_ms: u64,
     pub notifications_enabled: bool,
+    pub first_launch_done: bool,
 }
 
 impl Default for Config {
@@ -21,6 +22,7 @@ impl Default for Config {
             scan_existing_on_pick: true,
             debounce_ms: 5000,
             notifications_enabled: true,
+            first_launch_done: false,
         }
     }
 }
@@ -125,10 +127,28 @@ mod tests {
             scan_existing_on_pick: false,
             debounce_ms: 3000,
             notifications_enabled: false,
+            first_launch_done: true,
         };
         save_to(&original, dir.path()).unwrap();
         let loaded = load_from(dir.path()).unwrap();
         assert_eq!(loaded, original);
+    }
+
+    #[test]
+    fn first_launch_done_defaults_to_false() {
+        assert!(!Config::default().first_launch_done);
+    }
+
+    #[test]
+    fn load_existing_config_without_first_launch_field_defaults_to_false() {
+        let dir = TempDir::new().unwrap();
+        fs::write(
+            dir.path().join("config.json"),
+            r#"{"watch_folder":"/foo","notifications_enabled":true}"#,
+        )
+        .unwrap();
+        let c = load_from(dir.path()).unwrap();
+        assert!(!c.first_launch_done);
     }
 
     #[test]

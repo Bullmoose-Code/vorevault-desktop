@@ -313,6 +313,10 @@ pub fn start(
 }
 
 fn process_one(ctx: &WorkerCtx, path: &Path) {
+    if crate::path::has_hidden_ancestor_or_self(path, Path::new(&ctx.watch_folder)) {
+        return;
+    }
+
     // Quick metadata + filter pass.
     let meta = match std::fs::symlink_metadata(path) {
         Ok(m) => m,
