@@ -322,15 +322,13 @@ pub fn sign_out(vault_url: &str) {
 mod tests {
     use super::*;
 
+    // Single test for both VAULT_URL behaviors. cargo runs tests in parallel
+    // by default, so two separate tests both mutating the same env var would
+    // race. Sequential ownership inside one test eliminates the race.
     #[test]
-    fn vault_url_strips_trailing_slash() {
+    fn vault_url_from_env_resolution() {
         std::env::set_var("VAULT_URL", "https://example.com/");
         assert_eq!(vault_url_from_env(), "https://example.com");
-        std::env::remove_var("VAULT_URL");
-    }
-
-    #[test]
-    fn vault_url_uses_default_when_unset() {
         std::env::remove_var("VAULT_URL");
         assert_eq!(vault_url_from_env(), DEFAULT_VAULT_URL);
     }
