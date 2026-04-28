@@ -6,6 +6,7 @@ mod config;
 mod db;
 mod keychain;
 mod notifier;
+mod path;
 mod pipeline;
 mod settings_window;
 mod tray;
@@ -110,8 +111,10 @@ fn scan_and_enqueue(root: &std::path::Path, pipeline: &pipeline::Pipeline) {
             for e in entries.flatten() {
                 let path = e.path();
                 if path.is_file() {
-                    pipeline.enqueue(path);
-                } else if path.is_dir() {
+                    if !crate::path::is_hidden(&path) {
+                        pipeline.enqueue(path);
+                    }
+                } else if path.is_dir() && !crate::path::is_hidden(&path) {
                     walk(&path, pipeline);
                 }
             }
