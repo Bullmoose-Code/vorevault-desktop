@@ -53,6 +53,9 @@ pub fn translate(input: &str, vault_url: &str) -> Result<String, DeepLinkError> 
     if !parsed.username().is_empty() || parsed.password().is_some() {
         return Err(DeepLinkError::HasCredentials);
     }
+    if parsed.port().is_some() {
+        return Err(DeepLinkError::HasPort);
+    }
     let mut out = String::from(vault_url.trim_end_matches('/'));
     out.push_str(parsed.path());
     Ok(out)
@@ -103,5 +106,14 @@ mod tests {
             "https://vault.bullmoosefn.com",
         );
         assert!(matches!(with_password, Err(DeepLinkError::HasCredentials)));
+    }
+
+    #[test]
+    fn rejects_port() {
+        let result = translate(
+            "vorevault://open:8080/files/abc",
+            "https://vault.bullmoosefn.com",
+        );
+        assert!(matches!(result, Err(DeepLinkError::HasPort)));
     }
 }
