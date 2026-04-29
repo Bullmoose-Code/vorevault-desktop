@@ -3,9 +3,12 @@
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
+use crate::rules::WatchRule;
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct Config {
+    pub rules: Vec<WatchRule>,
     pub watch_folder: Option<String>,
     pub watch_recursive: bool,
     pub scan_existing_on_pick: bool,
@@ -17,6 +20,7 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
+            rules: Vec::new(),
             watch_folder: None,
             watch_recursive: true,
             scan_existing_on_pick: true,
@@ -66,8 +70,8 @@ pub fn load_from(dir: &Path) -> Result<Config, ConfigError> {
         return Ok(Config::default());
     }
     let bytes = std::fs::read(&path).map_err(ConfigError::Io)?;
-    match serde_json::from_slice::<Config>(&bytes) {
-        Ok(c) => Ok(c),
+    let mut config: Config = match serde_json::from_slice::<Config>(&bytes) {
+        Ok(c) => c,
         Err(e) => {
             log::warn!("config.json is corrupt: {} — backing up + resetting", e);
             let ts = std::time::SystemTime::now()
@@ -76,9 +80,38 @@ pub fn load_from(dir: &Path) -> Result<Config, ConfigError> {
                 .unwrap_or(0);
             let backup = dir.join(format!("config.json.broken-{}", ts));
             let _ = std::fs::rename(&path, &backup);
-            Ok(Config::default())
+            return Ok(Config::default());
         }
+    };
+
+    if migrate_legacy_watch_folder(&mut config) {
+        save_to(&config, dir)?;
     }
+
+    Ok(config)
+}
+
+/// If the loaded config has a legacy `watch_folder` set and no rules,
+/// promote it to a single default rule. Returns true if migration ran
+/// (caller should re-save). No-op otherwise.
+fn migrate_legacy_watch_folder(config: &mut Config) -> bool {
+    if !config.rules.is_empty() {
+        return false;
+    }
+    let Some(legacy_path) = config.watch_folder.take() else {
+        return false;
+    };
+    if legacy_path.is_empty() {
+        return false;
+    }
+    config.rules.push(WatchRule {
+        id: uuid::Uuid::new_v4().to_string(),
+        path: legacy_path,
+        vault_folder_id: None,
+        vault_folder_label: None,
+        tags: vec![],
+    });
+    true
 }
 
 /// Save config atomically: write to `<dir>/config.json.tmp`, then rename to
@@ -105,6 +138,7 @@ mod tests {
     #[test]
     fn default_config_has_expected_values() {
         let c = Config::default();
+        assert!(c.rules.is_empty());
         assert_eq!(c.watch_folder, None);
         assert!(c.watch_recursive);
         assert!(c.scan_existing_on_pick);
@@ -122,7 +156,14 @@ mod tests {
     fn save_then_load_round_trips() {
         let dir = TempDir::new().unwrap();
         let original = Config {
-            watch_folder: Some("/tmp/foo".to_string()),
+            rules: vec![crate::rules::WatchRule {
+                id: "rule-1".to_string(),
+                path: "/tmp/foo".to_string(),
+                vault_folder_id: Some("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa".to_string()),
+                vault_folder_label: Some("Games / Apex".to_string()),
+                tags: vec!["apex".to_string(), "clips".to_string()],
+            }],
+            watch_folder: None,
             watch_recursive: true,
             scan_existing_on_pick: false,
             debounce_ms: 3000,
@@ -182,11 +223,92 @@ mod tests {
     #[test]
     fn load_accepts_partial_json_and_fills_defaults() {
         let dir = TempDir::new().unwrap();
-        fs::write(dir.path().join("config.json"), r#"{"watch_folder":"/foo"}"#).unwrap();
+        fs::write(
+            dir.path().join("config.json"),
+            r#"{"debounce_ms":1234}"#,
+        )
+        .unwrap();
         let c = load_from(dir.path()).unwrap();
-        assert_eq!(c.watch_folder, Some("/foo".to_string()));
+        assert_eq!(c.debounce_ms, 1234);
         assert!(c.watch_recursive);
         assert!(c.scan_existing_on_pick);
-        assert_eq!(c.debounce_ms, 5000);
+        assert!(c.rules.is_empty());
+    }
+
+    #[test]
+    fn migration_promotes_legacy_watch_folder_to_a_single_rule() {
+        let dir = TempDir::new().unwrap();
+        // v0.5.x-shape config on disk: watch_folder set, rules absent.
+        fs::write(
+            dir.path().join("config.json"),
+            r#"{"watch_folder":"/home/ryan/clips","notifications_enabled":true}"#,
+        )
+        .unwrap();
+
+        let c = load_from(dir.path()).unwrap();
+
+        assert_eq!(c.rules.len(), 1, "expected one migrated rule");
+        let r = &c.rules[0];
+        assert_eq!(r.path, "/home/ryan/clips");
+        assert_eq!(r.vault_folder_id, None);
+        assert_eq!(r.vault_folder_label, None);
+        assert!(r.tags.is_empty());
+        assert!(!r.id.is_empty(), "migrated rule should have a stable id");
+
+        assert_eq!(c.watch_folder, None, "legacy field cleared after migration");
+    }
+
+    #[test]
+    fn migration_persists_to_disk_so_it_only_runs_once() {
+        let dir = TempDir::new().unwrap();
+        fs::write(
+            dir.path().join("config.json"),
+            r#"{"watch_folder":"/home/ryan/clips"}"#,
+        )
+        .unwrap();
+
+        let first = load_from(dir.path()).unwrap();
+        let migrated_id = first.rules[0].id.clone();
+
+        // Second load: file should already be in the new shape; no re-migration.
+        let second = load_from(dir.path()).unwrap();
+        assert_eq!(second.rules.len(), 1);
+        assert_eq!(second.rules[0].id, migrated_id, "rule id must be stable across loads");
+        assert_eq!(second.watch_folder, None);
+    }
+
+    #[test]
+    fn migration_is_no_op_when_rules_already_present() {
+        let dir = TempDir::new().unwrap();
+        let existing = Config {
+            rules: vec![crate::rules::WatchRule {
+                id: "fixed-id-1".to_string(),
+                path: "/already/configured".to_string(),
+                vault_folder_id: Some("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa".to_string()),
+                vault_folder_label: Some("Games / Apex".to_string()),
+                tags: vec!["apex".to_string()],
+            }],
+            watch_folder: None,
+            watch_recursive: true,
+            scan_existing_on_pick: true,
+            debounce_ms: 5000,
+            notifications_enabled: true,
+            first_launch_done: true,
+        };
+        save_to(&existing, dir.path()).unwrap();
+
+        let loaded = load_from(dir.path()).unwrap();
+        assert_eq!(loaded.rules.len(), 1);
+        assert_eq!(loaded.rules[0].id, "fixed-id-1");
+    }
+
+    #[test]
+    fn migration_no_op_when_no_legacy_and_no_rules() {
+        let dir = TempDir::new().unwrap();
+        // Empty config — fresh install case.
+        fs::write(dir.path().join("config.json"), r#"{}"#).unwrap();
+        let c = load_from(dir.path()).unwrap();
+        assert!(c.rules.is_empty());
+        assert!(c.watch_folder.is_none());
     }
 }
