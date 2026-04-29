@@ -194,6 +194,34 @@ mod tests {
     }
 
     #[test]
+    fn network_path_reference_in_path_is_passed_through_safely() {
+        // `vorevault://open//evil.com/x` — the path starts with `//`, which a
+        // careless parser might interpret as a scheme-relative reference.
+        // We pass it through verbatim, producing `https://<vault>//evil.com/x`
+        // which the vault server treats as a regular (404'd) path. The desktop
+        // never lets it route to a non-vault host.
+        let out = translate(
+            "vorevault://open//evil.com/x",
+            "https://vault.bullmoosefn.com",
+        )
+        .expect("network-path reference should pass through as a path on the vault");
+        assert_eq!(out, "https://vault.bullmoosefn.com//evil.com/x");
+    }
+
+    #[test]
+    fn redirect_param_in_query_is_passed_through_to_vault() {
+        // `?redir=//evil.com` — sanitizing redirect query parameters is the
+        // vault server's responsibility, not the protocol handler's. Confirm
+        // we pass the query through verbatim.
+        let out = translate(
+            "vorevault://open/?redir=//evil.com",
+            "https://vault.bullmoosefn.com",
+        )
+        .expect("redirect query should pass through");
+        assert_eq!(out, "https://vault.bullmoosefn.com/?redir=//evil.com");
+    }
+
+    #[test]
     fn passes_fragment_through() {
         let out = translate(
             "vorevault://open/files/abc#t=10s",
@@ -251,9 +279,10 @@ mod tests {
 
     #[test]
     fn host_comparison_is_effectively_case_insensitive() {
-        // The `url` crate normalizes hosts to lowercase during parse, so
-        // by the time we compare against the literal `"open"`, an input of
-        // `"OPEN"` has already become `"open"`. Confirm.
+        // The `url` crate lowercases SCHEMES during parse but does NOT
+        // lowercase hosts for non-special schemes (vorevault is non-special).
+        // We call `to_ascii_lowercase` explicitly in `translate` so that
+        // `vorevault://OPEN/...` is treated the same as `vorevault://open/...`.
         let out = translate(
             "vorevault://OPEN/files/abc",
             "https://vault.bullmoosefn.com",

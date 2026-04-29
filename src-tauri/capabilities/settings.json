@@ -8,7 +8,6 @@
     "core:event:default",
     "core:webview:default",
     "core:window:default",
-    "deep-link:default",
     "dialog:allow-open",
     "notification:default",
     "opener:default",
