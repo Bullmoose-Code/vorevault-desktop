@@ -47,6 +47,9 @@ pub fn translate(input: &str, vault_url: &str) -> Result<String, DeepLinkError> 
     if parsed.scheme() != "vorevault" {
         return Err(DeepLinkError::BadScheme);
     }
+    if parsed.host_str() != Some("open") {
+        return Err(DeepLinkError::BadHost);
+    }
     let mut out = String::from(vault_url.trim_end_matches('/'));
     out.push_str(parsed.path());
     Ok(out)
@@ -73,5 +76,14 @@ mod tests {
             "https://vault.bullmoosefn.com",
         );
         assert!(matches!(result, Err(DeepLinkError::BadScheme)));
+    }
+
+    #[test]
+    fn rejects_wrong_host() {
+        let result = translate(
+            "vorevault://attacker.example.com/files/abc",
+            "https://vault.bullmoosefn.com",
+        );
+        assert!(matches!(result, Err(DeepLinkError::BadHost)));
     }
 }
