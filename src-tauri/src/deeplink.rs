@@ -56,8 +56,12 @@ pub fn translate(input: &str, vault_url: &str) -> Result<String, DeepLinkError> 
     if parsed.port().is_some() {
         return Err(DeepLinkError::HasPort);
     }
+    let path = parsed.path();
+    if !path.starts_with('/') {
+        return Err(DeepLinkError::BadPath);
+    }
     let mut out = String::from(vault_url.trim_end_matches('/'));
-    out.push_str(parsed.path());
+    out.push_str(path);
     Ok(out)
 }
 
@@ -115,5 +119,16 @@ mod tests {
             "https://vault.bullmoosefn.com",
         );
         assert!(matches!(result, Err(DeepLinkError::HasPort)));
+    }
+
+    #[test]
+    fn rejects_missing_path() {
+        // `vorevault://open` (no path) parses with an empty path. Reject so
+        // callers must be explicit about what they want opened.
+        let result = translate(
+            "vorevault://open",
+            "https://vault.bullmoosefn.com",
+        );
+        assert!(matches!(result, Err(DeepLinkError::BadPath)));
     }
 }
