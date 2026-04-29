@@ -50,6 +50,9 @@ pub fn translate(input: &str, vault_url: &str) -> Result<String, DeepLinkError> 
     if parsed.host_str() != Some("open") {
         return Err(DeepLinkError::BadHost);
     }
+    if !parsed.username().is_empty() || parsed.password().is_some() {
+        return Err(DeepLinkError::HasCredentials);
+    }
     let mut out = String::from(vault_url.trim_end_matches('/'));
     out.push_str(parsed.path());
     Ok(out)
@@ -85,5 +88,20 @@ mod tests {
             "https://vault.bullmoosefn.com",
         );
         assert!(matches!(result, Err(DeepLinkError::BadHost)));
+    }
+
+    #[test]
+    fn rejects_credentials() {
+        let with_user = translate(
+            "vorevault://user@open/files/abc",
+            "https://vault.bullmoosefn.com",
+        );
+        assert!(matches!(with_user, Err(DeepLinkError::HasCredentials)));
+
+        let with_password = translate(
+            "vorevault://user:pw@open/files/abc",
+            "https://vault.bullmoosefn.com",
+        );
+        assert!(matches!(with_password, Err(DeepLinkError::HasCredentials)));
     }
 }
