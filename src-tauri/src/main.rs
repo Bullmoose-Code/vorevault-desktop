@@ -4,10 +4,12 @@
 mod auth;
 mod config;
 mod db;
+mod folders_api;
 mod keychain;
 mod notifier;
 mod path;
 mod pipeline;
+mod rules;
 mod settings_window;
 mod tray;
 mod updater;
@@ -33,9 +35,13 @@ fn main() {
             settings_window::get_state,
             settings_window::get_autostart,
             settings_window::set_autostart,
-            settings_window::change_watch_folder,
             settings_window::sign_out,
             settings_window::sign_in,
+            settings_window::list_rules,
+            settings_window::save_rule,
+            settings_window::delete_rule,
+            settings_window::fetch_folders,
+            settings_window::fetch_tags,
             updater::updater_get_state,
             updater::updater_check_now,
             updater::updater_install_and_restart,
@@ -69,36 +75,66 @@ pub(crate) fn start_pipeline_if_configured(
     vault_url: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let cfg = config::load()?;
-    let Some(watch_folder) = cfg.watch_folder.as_deref() else {
-        log::info!("no watch folder configured; pipeline not started");
-        return Ok(());
-    };
-
-    let watch_path = PathBuf::from(watch_folder);
-    if !watch_path.is_dir() {
-        log::warn!("configured watch folder does not exist: {}", watch_folder);
+    if cfg.rules.is_empty() {
+        log::info!("no watch rules configured; pipeline not started");
         return Ok(());
     }
 
     let dir = config::config_dir()?;
     let db = Arc::new(db::Db::open(&dir)?);
 
-    let watcher_rx = watcher::start(watch_path.clone(), cfg.debounce_ms)?;
+    let roots: Vec<PathBuf> = cfg
+        .rules
+        .iter()
+        .filter_map(|r| {
+            let p = PathBuf::from(&r.path);
+            if p.is_dir() {
+                Some(p)
+            } else {
+                log::warn!("watch rule path does not exist: {}", r.path);
+                None
+            }
+        })
+        .collect();
+
+    if roots.is_empty() {
+        log::warn!("all configured watch rule paths are missing; pipeline not started");
+        return Ok(());
+    }
+
+    let (watcher_rx, watcher_handle) = watcher::start(&roots, cfg.debounce_ms)?;
+    let watcher_handle = Arc::new(watcher_handle);
 
     let token_getter: Arc<dyn Fn() -> Option<String> + Send + Sync> =
         Arc::new(|| keychain::load().ok().flatten());
+
+    // NOTE: rules contains the full configured set (including any whose
+    // paths don't exist on disk — those are filtered out of `roots` above
+    // and not registered with the watcher). PipelineState.watching_paths
+    // therefore reflects "configured" rather than "actually watched".
+    // The settings UI surfaces missing paths via a per-rule warning badge
+    // (spec section 10); the tray menu's "Watching: N folders" count
+    // matches the configured set for symmetry. Revisit if the tray ever
+    // gets per-rule status indicators.
+    let rules = Arc::new(std::sync::RwLock::new(cfg.rules.clone()));
 
     let pipeline = pipeline::start(
         watcher_rx,
         db.clone(),
         vault_url.to_string(),
         token_getter,
-        watch_folder.to_string(),
+        rules,
+        watcher_handle,
         handle.clone(),
     );
 
     if cfg.scan_existing_on_pick {
-        scan_and_enqueue(&watch_path, &pipeline);
+        for r in &cfg.rules {
+            let p = PathBuf::from(&r.path);
+            if p.is_dir() {
+                scan_and_enqueue(&p, &pipeline);
+            }
+        }
     }
 
     *tray::PIPELINE.write().unwrap() = Some(pipeline);
