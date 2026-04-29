@@ -12,14 +12,11 @@
     <h1 class="display-title">settings</h1>
     <p class="subtitle" id="vault-host">vault.bullmoosefn.com</p>
 
+    <!-- Top: account row + global toggles. -->
     <section class="rows" id="rows">
       <div class="row" id="row-account">
         <span class="row-label">account</span>
         <span class="row-control" id="ctrl-account"></span>
-      </div>
-      <div class="row" id="row-folder">
-        <span class="row-label">watch folder</span>
-        <span class="row-control" id="ctrl-folder"></span>
       </div>
       <div class="row" id="row-autostart">
         <span class="row-label">launch at login</span>
@@ -32,6 +29,54 @@
       <div class="row" id="row-updates">
         <span class="row-label">updates</span>
         <span class="row-control" id="ctrl-updates"></span>
+      </div>
+    </section>
+
+    <!-- Middle: watched-folder rules list (the main feature for v0.6). -->
+    <section class="rules-section" id="rules-section">
+      <h2 class="section-title">watched folders</h2>
+      <ul class="rules-list" id="rules-list" role="list"></ul>
+      <p class="rules-empty" id="rules-empty" hidden>
+        No watched folders. Add one to start uploading.
+      </p>
+      <button class="btn add-rule-btn" id="add-rule-btn" type="button">+ add watched folder</button>
+    </section>
+
+    <!-- Edit/add panel: hidden by default; slides over the list when open. -->
+    <section class="edit-panel" id="edit-panel" hidden aria-labelledby="edit-panel-title">
+      <h2 class="section-title" id="edit-panel-title">edit watched folder</h2>
+
+      <div class="edit-row">
+        <label class="row-label">watch this folder</label>
+        <div class="edit-control">
+          <button class="btn" id="edit-pick-folder-btn" type="button">choose a folder…</button>
+          <span class="path-display" id="edit-path-display"></span>
+        </div>
+      </div>
+
+      <div class="edit-row">
+        <label class="row-label" for="edit-dest-search">upload to</label>
+        <div class="edit-control">
+          <input class="search-input" id="edit-dest-search" type="text" placeholder="search folders…" autocomplete="off">
+          <ul class="dest-results" id="edit-dest-results" role="listbox"></ul>
+          <span class="selected-dest" id="edit-dest-selected"></span>
+        </div>
+      </div>
+
+      <div class="edit-row">
+        <label class="row-label" for="edit-tag-input">tags</label>
+        <div class="edit-control">
+          <div class="chip-input" id="edit-chip-input">
+            <input class="chip-text" id="edit-tag-input" type="text" placeholder="apex, clips" autocomplete="off">
+          </div>
+          <ul class="tag-suggestions" id="edit-tag-suggestions" role="listbox"></ul>
+          <span class="inline-error" id="edit-error" hidden></span>
+        </div>
+      </div>
+
+      <div class="edit-actions">
+        <button class="btn btn-go" id="edit-save-btn" type="button">save</button>
+        <button class="btn" id="edit-cancel-btn" type="button">cancel</button>
       </div>
     </section>
 
