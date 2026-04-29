@@ -73,6 +73,29 @@ pub fn translate(input: &str, vault_url: &str) -> Result<String, DeepLinkError> 
     Ok(out)
 }
 
+/// Translate `raw_url` and hand the result to the system browser. All errors
+/// (parse, validation, browser-open failure) are logged but never surfaced to
+/// the user — the user clicked a link from elsewhere and a notification or
+/// modal here would be confusing and out of context.
+///
+/// `_app` is taken (not used today) so future expansion (e.g. focusing the
+/// settings window for certain link types) does not require changing every
+/// call site.
+pub fn dispatch(_app: &tauri::AppHandle, raw_url: &str) {
+    let vault = crate::auth::vault_url_from_env();
+    match translate(raw_url, &vault) {
+        Ok(target) => {
+            log::info!("deep link → {}", target);
+            if let Err(e) = tauri_plugin_opener::open_url(&target, None::<&str>) {
+                log::warn!("deep link: failed to open browser for {}: {}", target, e);
+            }
+        }
+        Err(e) => {
+            log::warn!("deep link: rejected input {:?}: {}", raw_url, e);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
