@@ -4,6 +4,7 @@
 mod auth;
 mod config;
 mod db;
+mod folders_api;
 mod keychain;
 mod notifier;
 mod path;
