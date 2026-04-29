@@ -266,4 +266,16 @@ mod tests {
         .expect("upper-case scheme should be normalized and accepted");
         assert_eq!(out, "https://vault.bullmoosefn.com/files/abc");
     }
+
+    #[test]
+    fn rejects_unparseable_input() {
+        let result = translate("not a url", "https://vault.bullmoosefn.com");
+        assert!(matches!(result, Err(DeepLinkError::Parse(_))));
+    }
+
+    #[test]
+    fn rejects_empty_input() {
+        let result = translate("", "https://vault.bullmoosefn.com");
+        assert!(matches!(result, Err(DeepLinkError::Parse(_))));
+    }
 }
