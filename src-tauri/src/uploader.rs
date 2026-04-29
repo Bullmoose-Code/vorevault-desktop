@@ -145,9 +145,12 @@ pub fn build_files_url(vault_url: &str) -> String {
     format!("{}/files/", vault_url.trim_end_matches('/'))
 }
 
-/// Build the `Upload-Metadata` header value per tus spec: space-separated
-/// `key base64(value)` pairs. `filename` is always included; `folder_id`
-/// and `tags` are appended only when present/non-empty.
+/// Build the `Upload-Metadata` header value per tus spec
+/// (https://tus.io/protocols/resumable-upload#upload-metadata): comma-separated
+/// `key SP base64(value)` pairs. Within a pair, key and base64-value are
+/// separated by a single space; pairs are separated by a comma.
+/// `filename` is always included; `folder_id` and `tags` are appended only
+/// when present/non-empty.
 pub fn build_upload_metadata(filename: &str, folder_id: Option<&str>, tags: &[String]) -> String {
     let mut parts = vec![format!("filename {}", STANDARD.encode(filename.as_bytes()))];
     if let Some(id) = folder_id {
@@ -157,7 +160,7 @@ pub fn build_upload_metadata(filename: &str, folder_id: Option<&str>, tags: &[St
         let joined = tags.join(",");
         parts.push(format!("tags {}", STANDARD.encode(joined.as_bytes())));
     }
-    parts.join(" ")
+    parts.join(",")
 }
 
 #[cfg(test)]
@@ -193,7 +196,7 @@ mod tests {
         // "YWFhYWFhYWEtYWFhYS1hYWFhLWFhYWEtYWFhYWFhYWFhYWFh"
         assert_eq!(
             m,
-            "filename Zm9vLm1wNA== folderId YWFhYWFhYWEtYWFhYS1hYWFhLWFhYWEtYWFhYWFhYWFhYWFh"
+            "filename Zm9vLm1wNA==,folderId YWFhYWFhYWEtYWFhYS1hYWFhLWFhYWEtYWFhYWFhYWFhYWFh"
         );
     }
 
@@ -201,7 +204,7 @@ mod tests {
     fn metadata_includes_tags_when_non_empty() {
         let m = build_upload_metadata("foo.mp4", None, &["apex".to_string(), "clips".to_string()]);
         // base64("apex,clips") = "YXBleCxjbGlwcw=="
-        assert_eq!(m, "filename Zm9vLm1wNA== tags YXBleCxjbGlwcw==");
+        assert_eq!(m, "filename Zm9vLm1wNA==,tags YXBleCxjbGlwcw==");
     }
 
     #[test]
@@ -211,10 +214,10 @@ mod tests {
             Some("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
             &["apex".to_string()],
         );
-        // base64("apex") = "YXBleA=="
+        // base64("apex") = "YXBseA=="
         assert_eq!(
             m,
-            "filename Zm9vLm1wNA== folderId YWFhYWFhYWEtYWFhYS1hYWFhLWFhYWEtYWFhYWFhYWFhYWFh tags YXBleA=="
+            "filename Zm9vLm1wNA==,folderId YWFhYWFhYWEtYWFhYS1hYWFhLWFhYWEtYWFhYWFhYWFhYWFh,tags YXBleA=="
         );
     }
 
@@ -222,7 +225,7 @@ mod tests {
     fn metadata_omits_tags_when_empty() {
         let m = build_upload_metadata("foo.mp4", Some("xx"), &[]);
         // base64("xx") = "eHg="
-        assert_eq!(m, "filename Zm9vLm1wNA== folderId eHg=");
+        assert_eq!(m, "filename Zm9vLm1wNA==,folderId eHg=");
     }
 
     #[test]
@@ -230,5 +233,21 @@ mod tests {
         let m = build_upload_metadata("café.png", None, &[]);
         // base64("café.png") = "Y2Fmw6kucG5n"
         assert_eq!(m, "filename Y2Fmw6kucG5n");
+    }
+
+    #[test]
+    fn metadata_uses_comma_between_entries_per_tus_spec() {
+        // Regression for the "uploads land as 'unnamed' with no tags" bug.
+        // Per tus spec (https://tus.io/protocols/resumable-upload#upload-metadata)
+        // entries are COMMA-separated; within an entry, key + base64-value are
+        // SPACE-separated. A previous version joined entries with spaces, which
+        // tusd interpreted as a single mangled entry → entire metadata dropped
+        // → server fell back to "unnamed" filename and ignored tags.
+        let m = build_upload_metadata("a", Some("b"), &["c".to_string()]);
+        // base64("a") = "YQ==", base64("b") = "Yg==", base64("c") = "Yw=="
+        assert_eq!(m, "filename YQ==,folderId Yg==,tags Yw==");
+        // The whole header value must contain exactly two commas (one between
+        // each pair of entries), not three spaces.
+        assert_eq!(m.matches(',').count(), 2);
     }
 }
