@@ -201,4 +201,46 @@ mod tests {
             "https://vault.bullmoosefn.com/files/abc?autoplay=1#t=10"
         );
     }
+
+    #[test]
+    fn vault_url_trailing_slash_is_trimmed() {
+        let out = translate(
+            "vorevault://open/files/abc",
+            "https://vault.bullmoosefn.com/", // note trailing slash
+        )
+        .expect("trailing-slash vault URL should still produce a clean output");
+        assert_eq!(out, "https://vault.bullmoosefn.com/files/abc");
+    }
+
+    #[test]
+    fn vault_url_with_dev_port() {
+        let out = translate(
+            "vorevault://open/files/abc",
+            "http://localhost:3000",
+        )
+        .expect("dev vault URL should work");
+        assert_eq!(out, "http://localhost:3000/files/abc");
+    }
+
+    #[test]
+    fn vault_url_with_dev_port_and_trailing_slash() {
+        let out = translate(
+            "vorevault://open/files/abc",
+            "http://localhost:3000/",
+        )
+        .expect("dev vault URL with trailing slash should work");
+        assert_eq!(out, "http://localhost:3000/files/abc");
+    }
+
+    #[test]
+    fn vault_url_with_subpath_mount() {
+        // Hypothetical: vault deployed at example.com/vv. Translator must not
+        // break on a vault URL that already has a path component.
+        let out = translate(
+            "vorevault://open/files/abc",
+            "https://example.com/vv",
+        )
+        .expect("sub-path mounted vault URL should work");
+        assert_eq!(out, "https://example.com/vv/files/abc");
+    }
 }
