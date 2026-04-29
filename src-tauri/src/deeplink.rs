@@ -47,7 +47,7 @@ pub fn translate(input: &str, vault_url: &str) -> Result<String, DeepLinkError> 
     if parsed.scheme() != "vorevault" {
         return Err(DeepLinkError::BadScheme);
     }
-    if parsed.host_str() != Some("open") {
+    if parsed.host_str().map(str::to_ascii_lowercase).as_deref() != Some("open") {
         return Err(DeepLinkError::BadHost);
     }
     if !parsed.username().is_empty() || parsed.password().is_some() {
@@ -242,5 +242,28 @@ mod tests {
         )
         .expect("sub-path mounted vault URL should work");
         assert_eq!(out, "https://example.com/vv/files/abc");
+    }
+
+    #[test]
+    fn host_comparison_is_effectively_case_insensitive() {
+        // The `url` crate normalizes hosts to lowercase during parse, so
+        // by the time we compare against the literal `"open"`, an input of
+        // `"OPEN"` has already become `"open"`. Confirm.
+        let out = translate(
+            "vorevault://OPEN/files/abc",
+            "https://vault.bullmoosefn.com",
+        )
+        .expect("upper-case host should be normalized and accepted");
+        assert_eq!(out, "https://vault.bullmoosefn.com/files/abc");
+    }
+
+    #[test]
+    fn scheme_comparison_is_effectively_case_insensitive() {
+        let out = translate(
+            "VOREVAULT://open/files/abc",
+            "https://vault.bullmoosefn.com",
+        )
+        .expect("upper-case scheme should be normalized and accepted");
+        assert_eq!(out, "https://vault.bullmoosefn.com/files/abc");
     }
 }
