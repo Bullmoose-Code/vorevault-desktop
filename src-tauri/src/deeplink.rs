@@ -131,4 +131,14 @@ mod tests {
         );
         assert!(matches!(result, Err(DeepLinkError::BadPath)));
     }
+
+    #[test]
+    fn allows_bare_vault_root() {
+        let out = translate(
+            "vorevault://open/",
+            "https://vault.bullmoosefn.com",
+        )
+        .expect("bare vault root should be allowed");
+        assert_eq!(out, "https://vault.bullmoosefn.com/");
+    }
 }
