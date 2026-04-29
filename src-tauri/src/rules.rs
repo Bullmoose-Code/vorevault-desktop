@@ -45,6 +45,55 @@ pub fn find_rule_for_path<'a>(rules: &'a [WatchRule], file_path: &Path) -> Optio
     })
 }
 
+/// Tag-name validation error. Mirrors server-side `TagNameError` in
+/// `vorevault/app/src/lib/tags.ts`.
+#[derive(Debug, PartialEq)]
+pub enum TagError {
+    Empty,
+    TooLong,
+    InvalidChars,
+}
+
+impl std::fmt::Display for TagError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TagError::Empty => write!(f, "tag name is empty"),
+            TagError::TooLong => write!(f, "tag name is longer than 32 chars"),
+            TagError::InvalidChars => write!(
+                f,
+                "tag names must be lowercase letters, digits, or hyphens, and can't start with a hyphen"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for TagError {}
+
+/// Normalize a raw tag input to its canonical server form.
+/// Trims, lowercases, then validates: 1–32 chars, `[a-z0-9-]`, can't start
+/// with a hyphen. Mirrors `normalizeTagName` in
+/// `vorevault/app/src/lib/tags.ts`.
+pub fn normalize_tag(raw: &str) -> Result<String, TagError> {
+    let lower = raw.trim().to_lowercase();
+    if lower.is_empty() {
+        return Err(TagError::Empty);
+    }
+    if lower.chars().count() > 32 {
+        return Err(TagError::TooLong);
+    }
+    let mut chars = lower.chars();
+    let first = chars.next().expect("non-empty checked above");
+    if !first.is_ascii_lowercase() && !first.is_ascii_digit() {
+        return Err(TagError::InvalidChars);
+    }
+    for c in chars {
+        if !c.is_ascii_lowercase() && !c.is_ascii_digit() && c != '-' {
+            return Err(TagError::InvalidChars);
+        }
+    }
+    Ok(lower)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -156,5 +205,53 @@ mod tests {
         let rules = vec![rule("r1", "/apex")];
         let file = p("/apex_clips/clip.mp4");
         assert!(find_rule_for_path(&rules, &file).is_none());
+    }
+
+    #[test]
+    fn normalize_lowercases_and_trims() {
+        assert_eq!(normalize_tag(" Apex ").unwrap(), "apex");
+        assert_eq!(normalize_tag("CLIPS").unwrap(), "clips");
+    }
+
+    #[test]
+    fn normalize_accepts_digits_and_hyphens() {
+        assert_eq!(normalize_tag("apex-2024").unwrap(), "apex-2024");
+        assert_eq!(normalize_tag("9clips").unwrap(), "9clips");
+    }
+
+    #[test]
+    fn normalize_rejects_empty() {
+        assert_eq!(normalize_tag("").unwrap_err(), TagError::Empty);
+        assert_eq!(normalize_tag("   ").unwrap_err(), TagError::Empty);
+    }
+
+    #[test]
+    fn normalize_rejects_too_long() {
+        let s = "a".repeat(33);
+        assert_eq!(normalize_tag(&s).unwrap_err(), TagError::TooLong);
+    }
+
+    #[test]
+    fn normalize_accepts_exactly_32() {
+        let s = "a".repeat(32);
+        assert_eq!(normalize_tag(&s).unwrap(), s);
+    }
+
+    #[test]
+    fn normalize_rejects_leading_hyphen() {
+        assert_eq!(normalize_tag("-apex").unwrap_err(), TagError::InvalidChars);
+    }
+
+    #[test]
+    fn normalize_rejects_special_chars() {
+        assert_eq!(normalize_tag("apex!").unwrap_err(), TagError::InvalidChars);
+        assert_eq!(normalize_tag("apex_clips").unwrap_err(), TagError::InvalidChars);
+        assert_eq!(normalize_tag("apex.clips").unwrap_err(), TagError::InvalidChars);
+        assert_eq!(normalize_tag("apex clips").unwrap_err(), TagError::InvalidChars);
+    }
+
+    #[test]
+    fn normalize_rejects_unicode() {
+        assert_eq!(normalize_tag("café").unwrap_err(), TagError::InvalidChars);
     }
 }
