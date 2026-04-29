@@ -5503,6 +5503,7 @@ dependencies = [
  "tiny_http",
  "url",
  "urlencoding",
+ "uuid",
 ]
 
 [[package]]

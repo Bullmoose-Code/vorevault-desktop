@@ -32,6 +32,7 @@ crossbeam-channel = "0.5"
 tauri-plugin-notification = "2"
 tauri-plugin-autostart = "2"
 tauri-plugin-updater = "2"
+uuid = { version = "1", features = ["v4"] }
 
 [features]
 default = ["custom-protocol"]

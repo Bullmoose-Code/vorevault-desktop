@@ -8,6 +8,7 @@ mod keychain;
 mod notifier;
 mod path;
 mod pipeline;
+mod rules;
 mod settings_window;
 mod tray;
 mod updater;
