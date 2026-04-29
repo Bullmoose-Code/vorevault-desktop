@@ -35,3 +35,31 @@ impl From<url::ParseError> for DeepLinkError {
         DeepLinkError::Parse(e)
     }
 }
+
+use url::Url;
+
+/// Translate a `vorevault://...` URL into an `https://<vault>/...` URL.
+/// The output's scheme + host come entirely from `vault_url`; only the path,
+/// query, and fragment of the input pass through. There is no input that can
+/// produce a non-vault target URL (security by construction).
+pub fn translate(input: &str, vault_url: &str) -> Result<String, DeepLinkError> {
+    let parsed = Url::parse(input)?;
+    let mut out = String::from(vault_url.trim_end_matches('/'));
+    out.push_str(parsed.path());
+    Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn translates_canonical_file_link() {
+        let out = translate(
+            "vorevault://open/files/abc-123",
+            "https://vault.bullmoosefn.com",
+        )
+        .expect("happy path should succeed");
+        assert_eq!(out, "https://vault.bullmoosefn.com/files/abc-123");
+    }
+}
