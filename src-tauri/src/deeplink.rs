@@ -62,6 +62,10 @@ pub fn translate(input: &str, vault_url: &str) -> Result<String, DeepLinkError> 
     }
     let mut out = String::from(vault_url.trim_end_matches('/'));
     out.push_str(path);
+    if let Some(q) = parsed.query() {
+        out.push('?');
+        out.push_str(q);
+    }
     Ok(out)
 }
 
@@ -140,5 +144,34 @@ mod tests {
         )
         .expect("bare vault root should be allowed");
         assert_eq!(out, "https://vault.bullmoosefn.com/");
+    }
+
+    #[test]
+    fn passes_query_string_through() {
+        let out = translate(
+            "vorevault://open/files/abc?tag=apex&page=2",
+            "https://vault.bullmoosefn.com",
+        )
+        .expect("query passthrough should succeed");
+        assert_eq!(
+            out,
+            "https://vault.bullmoosefn.com/files/abc?tag=apex&page=2"
+        );
+    }
+
+    #[test]
+    fn preserves_query_url_encoding() {
+        // The `url` crate parses `?tag=foo%20bar` and gives back `query()` =
+        // `"tag=foo%20bar"` (the encoded form, NOT decoded). Confirm we do not
+        // accidentally re-encode.
+        let out = translate(
+            "vorevault://open/search?q=foo%20bar",
+            "https://vault.bullmoosefn.com",
+        )
+        .expect("query passthrough should succeed");
+        assert_eq!(
+            out,
+            "https://vault.bullmoosefn.com/search?q=foo%20bar"
+        );
     }
 }
