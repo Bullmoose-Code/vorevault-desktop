@@ -34,6 +34,7 @@ fn main() {
                 }
             }
         }))
+        .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
@@ -63,6 +64,21 @@ fn main() {
             crate::settings_window::install_close_handler(&handle);
             crate::updater::spawn_startup_check(handle.clone());
             try_enable_autostart_on_first_launch(&handle);
+
+            // Deep-link listener: fires when a vorevault:// URL is delivered
+            // by the OS (either at launch or later, while the app is running).
+            // The single-instance plugin handles the second-launch path
+            // separately; this listener handles the first-launch URL and any
+            // subsequent same-process URL events (mostly relevant on macOS).
+            {
+                use tauri_plugin_deep_link::DeepLinkExt;
+                let deeplink_handle = app.handle().clone();
+                app.deep_link().on_open_url(move |event| {
+                    for url in event.urls() {
+                        crate::deeplink::dispatch(&deeplink_handle, url.as_str());
+                    }
+                });
+            }
 
             std::thread::spawn(move || {
                 let vault_url = auth::vault_url_from_env();
