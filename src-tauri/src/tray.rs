@@ -85,16 +85,28 @@ fn build_menu(
                 false,
                 None::<&str>,
             )?;
-            let watching = if let Some(path) = &p.watching_path {
-                Some(MenuItem::with_id(
+            let watching = match p.watching_paths.len() {
+                0 => None,
+                1 => {
+                    let basename = std::path::Path::new(&p.watching_paths[0])
+                        .file_name()
+                        .map(|n| n.to_string_lossy().to_string())
+                        .unwrap_or_else(|| p.watching_paths[0].clone());
+                    Some(MenuItem::with_id(
+                        app,
+                        "watching-label",
+                        format!("Watching: {}", basename),
+                        false,
+                        None::<&str>,
+                    )?)
+                }
+                n => Some(MenuItem::with_id(
                     app,
                     "watching-label",
-                    format!("Watching: {}", path),
+                    format!("Watching: {} folders", n),
                     false,
                     None::<&str>,
-                )?)
-            } else {
-                None
+                )?),
             };
             let busy = p.queued + p.uploading;
             let uploading = if p.uploading > 0 {
@@ -266,13 +278,12 @@ fn spawn_sign_in(app: AppHandle) {
         release_lock();
 
         // Onboarding: if this is the user's first successful sign-in and no
-        // watch folder is configured yet, immediately prompt them to pick one.
+        // watch rule is configured yet, immediately prompt them to pick one.
         if signed_in
             && PIPELINE.read().unwrap().is_none()
             && crate::config::load()
-                .ok()
-                .and_then(|c| c.watch_folder)
-                .is_none()
+                .map(|c| c.rules.is_empty())
+                .unwrap_or(true)
         {
             crate::settings_window::show_first_run(&app);
         }

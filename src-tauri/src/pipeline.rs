@@ -1,12 +1,13 @@
 //! Upload orchestration: queue, worker threads, dedupe, retry/backoff.
 
 use crate::db::{Db, UploadedRow};
+use crate::rules::{find_rule_for_path, WatchRule};
 use crate::uploader::{self, UploadError};
 use crossbeam_channel::{Receiver, Sender};
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::AppHandle;
 
@@ -126,7 +127,7 @@ fn hex_encode(bytes: &[u8]) -> String {
 /// Snapshot of pipeline state, read by the tray to render its menu.
 #[derive(Debug, Clone, Default)]
 pub struct PipelineState {
-    pub watching_path: Option<String>,
+    pub watching_paths: Vec<String>,
     pub queued: usize,
     pub uploading: usize,
     pub failed_paths: Vec<String>,
@@ -139,6 +140,8 @@ pub struct Pipeline {
     state: Arc<Mutex<PipelineState>>,
     enqueue: Sender<PathBuf>,
     pause_gate: PauseGate,
+    rules: Arc<RwLock<Vec<WatchRule>>>,
+    watcher_handle: Arc<crate::watcher::WatcherHandle>,
     app: tauri::AppHandle,
 }
 
@@ -153,7 +156,7 @@ struct WorkerCtx {
     app: AppHandle,
     successes_this_drain: Arc<AtomicU32>,
     notify_lock: Arc<Mutex<()>>,
-    watch_folder: String,
+    rules: Arc<RwLock<Vec<WatchRule>>>,
     in_forwarder: Arc<AtomicUsize>,
     pause_gate: PauseGate,
 }
@@ -227,6 +230,50 @@ impl Pipeline {
     pub fn is_paused(&self) -> bool {
         self.pause_gate.is_paused()
     }
+
+    /// Swap the rules vec in-place and converge the watcher's roots set.
+    /// Adds new roots, removes departed ones. Updates the
+    /// `state.watching_paths` snapshot.
+    ///
+    /// Ordering: the rules vec is swapped *before* watcher commands fire.
+    /// This guarantees that a file event arriving via a newly-added
+    /// watcher will see the new rule when `find_rule_for_path` runs.
+    /// Stale events from a watcher that's about to be unwatched are
+    /// dropped silently by `find_rule_for_path`'s `None` return.
+    #[allow(dead_code)] // wired up by Task 12 (save_rule / delete_rule commands)
+    pub fn replace_rules(&self, new_rules: Vec<WatchRule>) {
+        let old_paths: Vec<String> = {
+            let guard = self.rules.read().unwrap();
+            guard.iter().map(|r| r.path.clone()).collect()
+        };
+        let new_paths: Vec<String> = new_rules.iter().map(|r| r.path.clone()).collect();
+
+        // Swap the rules vec FIRST so any file event arriving via a
+        // newly-added watcher sees the new rule. The remove path is also
+        // safe: if a stale event arrives via a watcher that's about to be
+        // unwatched, find_rule_for_path returns None and it drops silently.
+        *self.rules.write().unwrap() = new_rules;
+
+        for added in new_paths.iter().filter(|p| !old_paths.contains(p)) {
+            if let Err(e) = self
+                .watcher_handle
+                .add_root(std::path::PathBuf::from(added))
+            {
+                log::warn!("failed to add watcher root {}: {}", added, e);
+            }
+        }
+        for removed in old_paths.iter().filter(|p| !new_paths.contains(p)) {
+            if let Err(e) = self
+                .watcher_handle
+                .remove_root(std::path::PathBuf::from(removed))
+            {
+                log::warn!("failed to remove watcher root {}: {}", removed, e);
+            }
+        }
+
+        self.state.lock().unwrap().watching_paths = new_paths;
+        crate::settings_window::emit_state_changed(&self.app);
+    }
 }
 
 /// Spawn the pipeline. Reads from the watcher channel + the internal enqueue
@@ -237,12 +284,19 @@ pub fn start(
     db: Arc<Db>,
     vault_url: String,
     get_session_token: Arc<dyn Fn() -> Option<String> + Send + Sync>,
-    watching_path: String,
+    rules: Arc<RwLock<Vec<WatchRule>>>,
+    watcher_handle: Arc<crate::watcher::WatcherHandle>,
     app: AppHandle,
 ) -> Pipeline {
     let (enqueue_tx, enqueue_rx) = crossbeam_channel::unbounded::<PathBuf>();
+    let initial_paths: Vec<String> = rules
+        .read()
+        .unwrap()
+        .iter()
+        .map(|r| r.path.clone())
+        .collect();
     let state = Arc::new(Mutex::new(PipelineState {
-        watching_path: Some(watching_path.clone()),
+        watching_paths: initial_paths,
         ..Default::default()
     }));
     let successes_this_drain = Arc::new(AtomicU32::new(0));
@@ -292,7 +346,7 @@ pub fn start(
             app: app.clone(),
             successes_this_drain: successes_this_drain.clone(),
             notify_lock: notify_lock.clone(),
-            watch_folder: watching_path.clone(),
+            rules: rules.clone(),
             in_forwarder: in_forwarder.clone(),
             pause_gate: pause_gate.clone(),
         };
@@ -308,12 +362,31 @@ pub fn start(
         state,
         enqueue: enqueue_tx,
         pause_gate,
+        rules,
+        watcher_handle,
         app: app.clone(),
     }
 }
 
 fn process_one(ctx: &WorkerCtx, path: &Path) {
-    if crate::path::has_hidden_ancestor_or_self(path, Path::new(&ctx.watch_folder)) {
+    // Route lookup: which rule does this file belong to?
+    let (rule_path, folder_id, tags) = {
+        let guard = ctx.rules.read().unwrap();
+        match find_rule_for_path(&guard, path) {
+            Some(r) => (
+                r.path.clone(),
+                r.vault_folder_id.clone(),
+                r.tags.clone(),
+            ),
+            None => {
+                // File came from a freshly-removed root that the OS hasn't
+                // dropped yet — drop silently.
+                return;
+            }
+        }
+    };
+
+    if crate::path::has_hidden_ancestor_or_self(path, Path::new(&rule_path)) {
         return;
     }
 
@@ -381,7 +454,7 @@ fn process_one(ctx: &WorkerCtx, path: &Path) {
                 break Err(UploadError::Unauthorized);
             }
         };
-        match uploader::upload_file(&ctx.vault_url, &token, path) {
+        match uploader::upload_file(&ctx.vault_url, &token, path, folder_id.as_deref(), &tags) {
             Ok(()) => break Ok(()),
             Err(UploadError::Unauthorized) => {
                 let mut s = ctx.state.lock().unwrap();
@@ -431,7 +504,7 @@ fn process_one(ctx: &WorkerCtx, path: &Path) {
         let _ = ctx.db.record_upload(&row);
         on_success(ctx, filename);
     } else {
-        on_failure(ctx, filename);
+        on_failure(ctx, filename, &rule_path);
     }
 }
 
@@ -490,14 +563,14 @@ fn on_success(ctx: &WorkerCtx, filename: &str) {
 
 /// Permanent failure — fire the failure toast immediately. Doesn't touch
 /// the success batch counter.
-fn on_failure(ctx: &WorkerCtx, filename: &str) {
+fn on_failure(ctx: &WorkerCtx, filename: &str, watch_folder: &str) {
     let cfg = crate::config::load().unwrap_or_default();
     crate::notifier::notify(
         &ctx.app,
         &cfg,
         crate::notifier::NotifyEvent::Failure {
             filename: filename.to_string(),
-            watch_folder: ctx.watch_folder.clone(),
+            watch_folder: watch_folder.to_string(),
         },
     );
 }
@@ -633,6 +706,12 @@ mod tests {
             decide_notification(0, 0, 17, true),
             NotificationAction::Batch(17)
         );
+    }
+
+    #[test]
+    fn pipeline_state_default_has_empty_watching_paths() {
+        let s = PipelineState::default();
+        assert!(s.watching_paths.is_empty());
     }
 
     #[test]

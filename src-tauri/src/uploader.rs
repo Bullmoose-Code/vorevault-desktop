@@ -49,7 +49,17 @@ impl From<reqwest::Error> for UploadError {
 /// Upload `path` to `<vault_url>/files/` via tus, sending `Cookie: vv_session=<token>`.
 /// On success, returns Ok(()). The vault file UUID is NOT returned (Sub-project C
 /// will add a server-side X-Vault-File-Id header for that).
-pub fn upload_file(vault_url: &str, session_token: &str, path: &Path) -> Result<(), UploadError> {
+///
+/// `folder_id`: optional VV folder UUID; server validates and falls back
+/// to user home folder on invalid UUID.
+/// `tags`: optional pre-normalized tag list; server attaches each one.
+pub fn upload_file(
+    vault_url: &str,
+    session_token: &str,
+    path: &Path,
+    folder_id: Option<&str>,
+    tags: &[String],
+) -> Result<(), UploadError> {
     let metadata = std::fs::metadata(path)?;
     let size = metadata.len();
     let filename = path.file_name().and_then(|s| s.to_str()).ok_or_else(|| {
@@ -61,7 +71,7 @@ pub fn upload_file(vault_url: &str, session_token: &str, path: &Path) -> Result<
 
     let upload_url = build_files_url(vault_url);
     let cookie = format!("vv_session={}", session_token);
-    let metadata_header = build_upload_metadata(filename);
+    let metadata_header = build_upload_metadata(filename, folder_id, tags);
 
     let client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(60 * 30))
@@ -136,9 +146,22 @@ pub fn build_files_url(vault_url: &str) -> String {
 }
 
 /// Build the `Upload-Metadata` header value per tus spec: space-separated
-/// `key base64(value)` pairs.
-pub fn build_upload_metadata(filename: &str) -> String {
-    format!("filename {}", STANDARD.encode(filename.as_bytes()))
+/// `key base64(value)` pairs. `filename` is always included; `folder_id`
+/// and `tags` are appended only when present/non-empty.
+pub fn build_upload_metadata(
+    filename: &str,
+    folder_id: Option<&str>,
+    tags: &[String],
+) -> String {
+    let mut parts = vec![format!("filename {}", STANDARD.encode(filename.as_bytes()))];
+    if let Some(id) = folder_id {
+        parts.push(format!("folderId {}", STANDARD.encode(id.as_bytes())));
+    }
+    if !tags.is_empty() {
+        let joined = tags.join(",");
+        parts.push(format!("tags {}", STANDARD.encode(joined.as_bytes())));
+    }
+    parts.join(" ")
 }
 
 #[cfg(test)]
@@ -162,23 +185,58 @@ mod tests {
     }
 
     #[test]
-    fn build_upload_metadata_base64_encodes_filename() {
-        let m = build_upload_metadata("foo.mp4");
-        // base64("foo.mp4") = "Zm9vLm1wNA=="
+    fn metadata_filename_only_when_no_extras() {
+        let m = build_upload_metadata("foo.mp4", None, &[]);
         assert_eq!(m, "filename Zm9vLm1wNA==");
     }
 
     #[test]
-    fn build_upload_metadata_handles_unicode() {
-        let m = build_upload_metadata("café.png");
-        // base64("café.png") = "Y2Fmw6kucG5n"
-        assert_eq!(m, "filename Y2Fmw6kucG5n");
+    fn metadata_includes_folder_id_when_set() {
+        let m = build_upload_metadata(
+            "foo.mp4",
+            Some("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+            &[],
+        );
+        // base64("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa") =
+        // "YWFhYWFhYWEtYWFhYS1hYWFhLWFhYWEtYWFhYWFhYWFhYWFh"
+        assert_eq!(
+            m,
+            "filename Zm9vLm1wNA== folderId YWFhYWFhYWEtYWFhYS1hYWFhLWFhYWEtYWFhYWFhYWFhYWFh"
+        );
     }
 
     #[test]
-    fn build_upload_metadata_handles_emoji() {
-        let m = build_upload_metadata("clip 🎮.mp4");
-        assert!(m.starts_with("filename "));
-        assert!(m.len() > "filename ".len() + 4);
+    fn metadata_includes_tags_when_non_empty() {
+        let m = build_upload_metadata("foo.mp4", None, &["apex".to_string(), "clips".to_string()]);
+        // base64("apex,clips") = "YXBleCxjbGlwcw=="
+        assert_eq!(m, "filename Zm9vLm1wNA== tags YXBleCxjbGlwcw==");
+    }
+
+    #[test]
+    fn metadata_includes_both_folder_and_tags() {
+        let m = build_upload_metadata(
+            "foo.mp4",
+            Some("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+            &["apex".to_string()],
+        );
+        // base64("apex") = "YXBleA=="
+        assert_eq!(
+            m,
+            "filename Zm9vLm1wNA== folderId YWFhYWFhYWEtYWFhYS1hYWFhLWFhYWEtYWFhYWFhYWFhYWFh tags YXBleA=="
+        );
+    }
+
+    #[test]
+    fn metadata_omits_tags_when_empty() {
+        let m = build_upload_metadata("foo.mp4", Some("xx"), &[]);
+        // base64("xx") = "eHg="
+        assert_eq!(m, "filename Zm9vLm1wNA== folderId eHg=");
+    }
+
+    #[test]
+    fn metadata_handles_unicode_filename() {
+        let m = build_upload_metadata("café.png", None, &[]);
+        // base64("café.png") = "Y2Fmw6kucG5n"
+        assert_eq!(m, "filename Y2Fmw6kucG5n");
     }
 }
