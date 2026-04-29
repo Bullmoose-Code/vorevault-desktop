@@ -35,6 +35,11 @@
       "endpoints": [
         "https://github.com/Bullmoose-Code/vorevault-desktop/releases/latest/download/latest.json"
       ]
+    },
+    "deep-link": {
+      "desktop": {
+        "schemes": ["vorevault"]
+      }
     }
   },
   "bundle": {
