@@ -24,6 +24,16 @@ fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            // Second-launch fired with a URL — forward to running instance.
+            // The first argument is the executable path; skip it and look for
+            // any vorevault:// URL in the remainder.
+            for arg in argv.iter().skip(1) {
+                if arg.starts_with("vorevault://") {
+                    crate::deeplink::dispatch(app, arg);
+                }
+            }
+        }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
