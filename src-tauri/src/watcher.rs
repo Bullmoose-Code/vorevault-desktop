@@ -300,20 +300,17 @@ mod tests {
         let mut seen_b = false;
         let deadline = std::time::Instant::now() + StdDuration::from_secs(3);
         while std::time::Instant::now() < deadline {
-            match rx.recv_timeout(StdDuration::from_millis(200)) {
-                Ok(p) => {
-                    let n = p
-                        .file_name()
-                        .map(|x| x.to_string_lossy().to_string())
-                        .unwrap_or_default();
-                    if n == "a.txt" {
-                        seen_a = true;
-                    }
-                    if n == "b.txt" {
-                        seen_b = true;
-                    }
+            if let Ok(p) = rx.recv_timeout(StdDuration::from_millis(200)) {
+                let n = p
+                    .file_name()
+                    .map(|x| x.to_string_lossy().to_string())
+                    .unwrap_or_default();
+                if n == "a.txt" {
+                    seen_a = true;
                 }
-                Err(_) => {}
+                if n == "b.txt" {
+                    seen_b = true;
+                }
             }
         }
         assert!(seen_b, "expected event for b.txt");
