@@ -4,6 +4,7 @@
 mod auth;
 mod config;
 mod db;
+mod deeplink;
 mod folders_api;
 mod keychain;
 mod notifier;
@@ -23,6 +24,15 @@ fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|_app, _argv, _cwd| {
+            // The `deep-link` feature on this plugin already forwards
+            // vorevault:// URLs from a second-launched process to the
+            // running instance's tauri-plugin-deep-link `on_open_url`
+            // listener. Doing it here too would dispatch the URL twice.
+            // This callback is intentionally a no-op; its only job is
+            // to ensure no second process actually stays alive.
+        }))
+        .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
@@ -52,6 +62,29 @@ fn main() {
             crate::settings_window::install_close_handler(&handle);
             crate::updater::spawn_startup_check(handle.clone());
             try_enable_autostart_on_first_launch(&handle);
+
+            #[cfg(debug_assertions)]
+            {
+                use tauri_plugin_deep_link::DeepLinkExt;
+                if let Err(e) = app.deep_link().register_all() {
+                    log::warn!("deep-link: dev-mode register_all failed: {}", e);
+                }
+            }
+
+            // Deep-link listener: fires when a vorevault:// URL is delivered
+            // by the OS (either at launch or later, while the app is running).
+            // The single-instance plugin handles the second-launch path
+            // separately; this listener handles the first-launch URL and any
+            // subsequent same-process URL events (mostly relevant on macOS).
+            {
+                use tauri_plugin_deep_link::DeepLinkExt;
+                let deeplink_handle = app.handle().clone();
+                app.deep_link().on_open_url(move |event| {
+                    for url in event.urls() {
+                        crate::deeplink::dispatch(&deeplink_handle, url.as_str());
+                    }
+                });
+            }
 
             std::thread::spawn(move || {
                 let vault_url = auth::vault_url_from_env();
