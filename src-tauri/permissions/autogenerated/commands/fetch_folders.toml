@@ -1,0 +1,11 @@
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-fetch-folders"
+description = "Enables the fetch_folders command without any pre-configured scope."
+commands.allow = ["fetch_folders"]
+
+[[permission]]
+identifier = "deny-fetch-folders"
+description = "Denies the fetch_folders command without any pre-configured scope."
+commands.deny = ["fetch_folders"]
