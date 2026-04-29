@@ -136,3 +136,104 @@ pub fn sign_out(app: tauri::AppHandle) {
 pub fn sign_in(app: tauri::AppHandle) {
     crate::tray::spawn_sign_in_command(app);
 }
+
+#[tauri::command]
+pub fn list_rules() -> Vec<crate::rules::WatchRule> {
+    crate::config::load().map(|c| c.rules).unwrap_or_default()
+}
+
+#[tauri::command]
+pub fn save_rule(app: tauri::AppHandle, rule: crate::rules::WatchRule) -> Result<(), String> {
+    let path_buf = std::path::PathBuf::from(&rule.path);
+    if !path_buf.is_dir() {
+        return Err("watch folder doesn't exist on disk".to_string());
+    }
+
+    let mut cfg = crate::config::load().map_err(|e| format!("config load: {}", e))?;
+
+    // Validate overlap against the OTHER rules (exclude self-by-id).
+    let other_paths: Vec<&std::path::Path> = cfg
+        .rules
+        .iter()
+        .filter(|r| r.id != rule.id)
+        .map(|r| std::path::Path::new(&r.path))
+        .collect();
+    if crate::rules::is_path_overlap(&other_paths, std::path::Path::new(&rule.path)) {
+        return Err("that path overlaps with another rule".to_string());
+    }
+
+    // Validate tags (defense-in-depth — UI also pre-validates).
+    for t in &rule.tags {
+        crate::rules::normalize_tag(t).map_err(|e| format!("invalid tag {:?}: {}", t, e))?;
+    }
+
+    // Replace if id exists, else append.
+    if let Some(existing) = cfg.rules.iter_mut().find(|r| r.id == rule.id) {
+        *existing = rule.clone();
+    } else {
+        cfg.rules.push(rule.clone());
+    }
+    crate::config::save(&cfg).map_err(|e| format!("config save: {}", e))?;
+
+    // Push the new rule set into the running pipeline (or start one if
+    // this is the first rule).
+    let vault_url = crate::auth::vault_url_from_env();
+    {
+        let guard = crate::tray::PIPELINE.read().unwrap();
+        if let Some(p) = guard.as_ref() {
+            p.replace_rules(cfg.rules.clone());
+        }
+    }
+    let pipeline_running = crate::tray::PIPELINE.read().unwrap().is_some();
+    if !pipeline_running {
+        if let Err(e) = crate::start_pipeline_if_configured(&app, &vault_url) {
+            log::warn!("pipeline start after save_rule failed: {}", e);
+        }
+    }
+
+    crate::tray::refresh_menu(&app, &vault_url);
+    emit_state_changed(&app);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn delete_rule(app: tauri::AppHandle, id: String) -> Result<(), String> {
+    let mut cfg = crate::config::load().map_err(|e| format!("config load: {}", e))?;
+    cfg.rules.retain(|r| r.id != id);
+    crate::config::save(&cfg).map_err(|e| format!("config save: {}", e))?;
+
+    let vault_url = crate::auth::vault_url_from_env();
+    {
+        let guard = crate::tray::PIPELINE.read().unwrap();
+        if let Some(p) = guard.as_ref() {
+            p.replace_rules(cfg.rules.clone());
+        }
+    }
+    if cfg.rules.is_empty() {
+        let mut guard = crate::tray::PIPELINE.write().unwrap();
+        *guard = None;
+    }
+    crate::tray::refresh_menu(&app, &vault_url);
+    emit_state_changed(&app);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn fetch_folders() -> Result<Vec<crate::folders_api::FolderNode>, String> {
+    let vault_url = crate::auth::vault_url_from_env();
+    let token = crate::keychain::load()
+        .ok()
+        .flatten()
+        .ok_or_else(|| "not signed in".to_string())?;
+    crate::folders_api::fetch_folders(&vault_url, &token).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn fetch_tags() -> Result<Vec<crate::folders_api::TagSuggestion>, String> {
+    let vault_url = crate::auth::vault_url_from_env();
+    let token = crate::keychain::load()
+        .ok()
+        .flatten()
+        .ok_or_else(|| "not signed in".to_string())?;
+    crate::folders_api::fetch_tags(&vault_url, &token).map_err(|e| e.to_string())
+}

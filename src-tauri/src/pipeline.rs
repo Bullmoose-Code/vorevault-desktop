@@ -240,7 +240,6 @@ impl Pipeline {
     /// watcher will see the new rule when `find_rule_for_path` runs.
     /// Stale events from a watcher that's about to be unwatched are
     /// dropped silently by `find_rule_for_path`'s `None` return.
-    #[allow(dead_code)] // wired up by Task 12 (save_rule / delete_rule commands)
     pub fn replace_rules(&self, new_rules: Vec<WatchRule>) {
         let old_paths: Vec<String> = {
             let guard = self.rules.read().unwrap();
