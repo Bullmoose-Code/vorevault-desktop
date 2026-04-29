@@ -223,11 +223,7 @@ mod tests {
     #[test]
     fn load_accepts_partial_json_and_fills_defaults() {
         let dir = TempDir::new().unwrap();
-        fs::write(
-            dir.path().join("config.json"),
-            r#"{"debounce_ms":1234}"#,
-        )
-        .unwrap();
+        fs::write(dir.path().join("config.json"), r#"{"debounce_ms":1234}"#).unwrap();
         let c = load_from(dir.path()).unwrap();
         assert_eq!(c.debounce_ms, 1234);
         assert!(c.watch_recursive);
@@ -273,7 +269,10 @@ mod tests {
         // Second load: file should already be in the new shape; no re-migration.
         let second = load_from(dir.path()).unwrap();
         assert_eq!(second.rules.len(), 1);
-        assert_eq!(second.rules[0].id, migrated_id, "rule id must be stable across loads");
+        assert_eq!(
+            second.rules[0].id, migrated_id,
+            "rule id must be stable across loads"
+        );
         assert_eq!(second.watch_folder, None);
     }
 

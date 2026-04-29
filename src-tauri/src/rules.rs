@@ -245,9 +245,18 @@ mod tests {
     #[test]
     fn normalize_rejects_special_chars() {
         assert_eq!(normalize_tag("apex!").unwrap_err(), TagError::InvalidChars);
-        assert_eq!(normalize_tag("apex_clips").unwrap_err(), TagError::InvalidChars);
-        assert_eq!(normalize_tag("apex.clips").unwrap_err(), TagError::InvalidChars);
-        assert_eq!(normalize_tag("apex clips").unwrap_err(), TagError::InvalidChars);
+        assert_eq!(
+            normalize_tag("apex_clips").unwrap_err(),
+            TagError::InvalidChars
+        );
+        assert_eq!(
+            normalize_tag("apex.clips").unwrap_err(),
+            TagError::InvalidChars
+        );
+        assert_eq!(
+            normalize_tag("apex clips").unwrap_err(),
+            TagError::InvalidChars
+        );
     }
 
     #[test]

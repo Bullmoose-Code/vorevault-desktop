@@ -372,11 +372,7 @@ fn process_one(ctx: &WorkerCtx, path: &Path) {
     let (rule_path, folder_id, tags) = {
         let guard = ctx.rules.read().unwrap();
         match find_rule_for_path(&guard, path) {
-            Some(r) => (
-                r.path.clone(),
-                r.vault_folder_id.clone(),
-                r.tags.clone(),
-            ),
+            Some(r) => (r.path.clone(), r.vault_folder_id.clone(), r.tags.clone()),
             None => {
                 // File came from a freshly-removed root that the OS hasn't
                 // dropped yet — drop silently.

@@ -148,11 +148,7 @@ pub fn build_files_url(vault_url: &str) -> String {
 /// Build the `Upload-Metadata` header value per tus spec: space-separated
 /// `key base64(value)` pairs. `filename` is always included; `folder_id`
 /// and `tags` are appended only when present/non-empty.
-pub fn build_upload_metadata(
-    filename: &str,
-    folder_id: Option<&str>,
-    tags: &[String],
-) -> String {
+pub fn build_upload_metadata(filename: &str, folder_id: Option<&str>, tags: &[String]) -> String {
     let mut parts = vec![format!("filename {}", STANDARD.encode(filename.as_bytes()))];
     if let Some(id) = folder_id {
         parts.push(format!("folderId {}", STANDARD.encode(id.as_bytes())));
@@ -192,11 +188,7 @@ mod tests {
 
     #[test]
     fn metadata_includes_folder_id_when_set() {
-        let m = build_upload_metadata(
-            "foo.mp4",
-            Some("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
-            &[],
-        );
+        let m = build_upload_metadata("foo.mp4", Some("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"), &[]);
         // base64("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa") =
         // "YWFhYWFhYWEtYWFhYS1hYWFhLWFhYWEtYWFhYWFhYWFhYWFh"
         assert_eq!(

@@ -256,7 +256,12 @@ mod tests {
             }
         }
 
-        assert_eq!(got.len(), 2, "expected events from both roots, got {:?}", got);
+        assert_eq!(
+            got.len(),
+            2,
+            "expected events from both roots, got {:?}",
+            got
+        );
         let names: Vec<String> = got
             .iter()
             .filter_map(|p| p.file_name().map(|n| n.to_string_lossy().to_string()))
@@ -312,7 +317,10 @@ mod tests {
             }
         }
         assert!(seen_b, "expected event for b.txt");
-        assert!(!seen_a, "should NOT have seen event for a.txt after remove_root");
+        assert!(
+            !seen_a,
+            "should NOT have seen event for a.txt after remove_root"
+        );
     }
 
     #[test]
@@ -322,7 +330,9 @@ mod tests {
         let (rx, handle) = start(&[dir_a.path().to_path_buf()], 200).unwrap();
         while rx.try_recv().is_ok() {}
 
-        handle.add_root(dir_b.path().to_path_buf()).expect("add_root succeeds");
+        handle
+            .add_root(dir_b.path().to_path_buf())
+            .expect("add_root succeeds");
         std::thread::sleep(StdDuration::from_millis(300));
 
         fs::write(dir_b.path().join("b.txt"), "b").unwrap();

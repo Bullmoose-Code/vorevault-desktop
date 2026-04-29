@@ -26,9 +26,7 @@ pub fn current_state(_app: &tauri::AppHandle) -> SettingsState {
     let auth_state = crate::auth::current_state(&vault_url);
     let username = auth_state.username;
 
-    let rules = crate::config::load()
-        .map(|c| c.rules)
-        .unwrap_or_default();
+    let rules = crate::config::load().map(|c| c.rules).unwrap_or_default();
 
     let paused = crate::tray::PIPELINE
         .read()

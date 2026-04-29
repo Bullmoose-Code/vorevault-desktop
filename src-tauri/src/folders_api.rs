@@ -52,8 +52,7 @@ impl std::error::Error for FetchError {}
 /// Compute breadcrumb labels ("Games / Apex") for each folder by walking
 /// `parent_id` up to the root. Pure function, easily testable.
 fn compute_breadcrumbs(rows: &[FolderRow]) -> Vec<FolderNode> {
-    let by_id: HashMap<String, &FolderRow> =
-        rows.iter().map(|r| (r.id.clone(), r)).collect();
+    let by_id: HashMap<String, &FolderRow> = rows.iter().map(|r| (r.id.clone(), r)).collect();
 
     rows.iter()
         .map(|r| {
@@ -177,8 +176,10 @@ mod tests {
             row("3", "Highlights", Some("2")),
         ];
         let out = compute_breadcrumbs(&rows);
-        let by_id: std::collections::HashMap<_, _> =
-            out.iter().map(|f| (f.id.as_str(), f.breadcrumb.as_str())).collect();
+        let by_id: std::collections::HashMap<_, _> = out
+            .iter()
+            .map(|f| (f.id.as_str(), f.breadcrumb.as_str()))
+            .collect();
         assert_eq!(by_id["1"], "Games");
         assert_eq!(by_id["2"], "Games / Apex");
         assert_eq!(by_id["3"], "Games / Apex / Highlights");
@@ -194,10 +195,7 @@ mod tests {
 
     #[test]
     fn breadcrumb_preserves_input_order() {
-        let rows = vec![
-            row("z", "Zebra", None),
-            row("a", "Alpha", None),
-        ];
+        let rows = vec![row("z", "Zebra", None), row("a", "Alpha", None)];
         let out = compute_breadcrumbs(&rows);
         assert_eq!(out[0].id, "z");
         assert_eq!(out[1].id, "a");
