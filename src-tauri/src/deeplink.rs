@@ -44,6 +44,9 @@ use url::Url;
 /// produce a non-vault target URL (security by construction).
 pub fn translate(input: &str, vault_url: &str) -> Result<String, DeepLinkError> {
     let parsed = Url::parse(input)?;
+    if parsed.scheme() != "vorevault" {
+        return Err(DeepLinkError::BadScheme);
+    }
     let mut out = String::from(vault_url.trim_end_matches('/'));
     out.push_str(parsed.path());
     Ok(out)
@@ -61,5 +64,14 @@ mod tests {
         )
         .expect("happy path should succeed");
         assert_eq!(out, "https://vault.bullmoosefn.com/files/abc-123");
+    }
+
+    #[test]
+    fn rejects_wrong_scheme() {
+        let result = translate(
+            "https://attacker.example.com/files/abc",
+            "https://vault.bullmoosefn.com",
+        );
+        assert!(matches!(result, Err(DeepLinkError::BadScheme)));
     }
 }
