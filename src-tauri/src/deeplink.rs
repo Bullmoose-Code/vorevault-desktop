@@ -66,6 +66,10 @@ pub fn translate(input: &str, vault_url: &str) -> Result<String, DeepLinkError> 
         out.push('?');
         out.push_str(q);
     }
+    if let Some(f) = parsed.fragment() {
+        out.push('#');
+        out.push_str(f);
+    }
     Ok(out)
 }
 
@@ -172,6 +176,29 @@ mod tests {
         assert_eq!(
             out,
             "https://vault.bullmoosefn.com/search?q=foo%20bar"
+        );
+    }
+
+    #[test]
+    fn passes_fragment_through() {
+        let out = translate(
+            "vorevault://open/files/abc#t=10s",
+            "https://vault.bullmoosefn.com",
+        )
+        .expect("fragment passthrough should succeed");
+        assert_eq!(out, "https://vault.bullmoosefn.com/files/abc#t=10s");
+    }
+
+    #[test]
+    fn passes_query_and_fragment_together() {
+        let out = translate(
+            "vorevault://open/files/abc?autoplay=1#t=10",
+            "https://vault.bullmoosefn.com",
+        )
+        .expect("query+fragment together should succeed");
+        assert_eq!(
+            out,
+            "https://vault.bullmoosefn.com/files/abc?autoplay=1#t=10"
         );
     }
 }
