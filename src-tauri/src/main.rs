@@ -65,6 +65,14 @@ fn main() {
             crate::updater::spawn_startup_check(handle.clone());
             try_enable_autostart_on_first_launch(&handle);
 
+            #[cfg(debug_assertions)]
+            {
+                use tauri_plugin_deep_link::DeepLinkExt;
+                if let Err(e) = app.deep_link().register_all() {
+                    log::warn!("deep-link: dev-mode register_all failed: {}", e);
+                }
+            }
+
             // Deep-link listener: fires when a vorevault:// URL is delivered
             // by the OS (either at launch or later, while the app is running).
             // The single-instance plugin handles the second-launch path
