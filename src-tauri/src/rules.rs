@@ -2,7 +2,7 @@
 //! detection, client-side tag normalization. Pure logic; no I/O.
 
 use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 /// One configured watched folder + routing target.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -33,6 +33,18 @@ fn paths_overlap(a: &Path, b: &Path) -> bool {
     a == b || a.starts_with(b) || b.starts_with(a)
 }
 
+/// Find the rule whose `path` is an ancestor (or equal) of `file_path`.
+/// Returns the first match. Overlap is forbidden at save time, so there is
+/// at most one match. Returns `None` when `file_path` is outside every
+/// rule's root (e.g. event from a freshly-removed root that the OS hasn't
+/// dropped yet).
+pub fn find_rule_for_path<'a>(rules: &'a [WatchRule], file_path: &Path) -> Option<&'a WatchRule> {
+    rules.iter().find(|r| {
+        let root = Path::new(&r.path);
+        file_path == root || file_path.starts_with(root)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -40,6 +52,16 @@ mod tests {
 
     fn p(s: &str) -> PathBuf {
         PathBuf::from(s)
+    }
+
+    fn rule(id: &str, path: &str) -> WatchRule {
+        WatchRule {
+            id: id.to_string(),
+            path: path.to_string(),
+            vault_folder_id: None,
+            vault_folder_label: None,
+            tags: vec![],
+        }
     }
 
     #[test]
@@ -97,5 +119,42 @@ mod tests {
         let candidate = p("/a/bcd");
         let others = vec![a.as_path()];
         assert!(!is_path_overlap(&others, &candidate));
+    }
+
+    #[test]
+    fn find_returns_matching_rule_for_descendant_file() {
+        let rules = vec![rule("r1", "/a"), rule("r2", "/b")];
+        let file = p("/a/sub/clip.mp4");
+        let found = find_rule_for_path(&rules, &file);
+        assert_eq!(found.map(|r| r.id.as_str()), Some("r1"));
+    }
+
+    #[test]
+    fn find_returns_matching_rule_for_exact_root() {
+        let rules = vec![rule("r1", "/a")];
+        let file = p("/a");
+        let found = find_rule_for_path(&rules, &file);
+        assert_eq!(found.map(|r| r.id.as_str()), Some("r1"));
+    }
+
+    #[test]
+    fn find_returns_none_when_no_rule_matches() {
+        let rules = vec![rule("r1", "/a"), rule("r2", "/b")];
+        let file = p("/c/clip.mp4");
+        assert!(find_rule_for_path(&rules, &file).is_none());
+    }
+
+    #[test]
+    fn find_returns_none_for_empty_rules() {
+        let file = p("/a/clip.mp4");
+        assert!(find_rule_for_path(&[], &file).is_none());
+    }
+
+    #[test]
+    fn find_does_not_string_prefix_match() {
+        // /apex_clips should not match a rule rooted at /apex.
+        let rules = vec![rule("r1", "/apex")];
+        let file = p("/apex_clips/clip.mp4");
+        assert!(find_rule_for_path(&rules, &file).is_none());
     }
 }
