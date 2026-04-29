@@ -156,20 +156,14 @@ mod tests {
     fn rejects_missing_path() {
         // `vorevault://open` (no path) parses with an empty path. Reject so
         // callers must be explicit about what they want opened.
-        let result = translate(
-            "vorevault://open",
-            "https://vault.bullmoosefn.com",
-        );
+        let result = translate("vorevault://open", "https://vault.bullmoosefn.com");
         assert!(matches!(result, Err(DeepLinkError::BadPath)));
     }
 
     #[test]
     fn allows_bare_vault_root() {
-        let out = translate(
-            "vorevault://open/",
-            "https://vault.bullmoosefn.com",
-        )
-        .expect("bare vault root should be allowed");
+        let out = translate("vorevault://open/", "https://vault.bullmoosefn.com")
+            .expect("bare vault root should be allowed");
         assert_eq!(out, "https://vault.bullmoosefn.com/");
     }
 
@@ -196,10 +190,7 @@ mod tests {
             "https://vault.bullmoosefn.com",
         )
         .expect("query passthrough should succeed");
-        assert_eq!(
-            out,
-            "https://vault.bullmoosefn.com/search?q=foo%20bar"
-        );
+        assert_eq!(out, "https://vault.bullmoosefn.com/search?q=foo%20bar");
     }
 
     #[test]
@@ -237,21 +228,15 @@ mod tests {
 
     #[test]
     fn vault_url_with_dev_port() {
-        let out = translate(
-            "vorevault://open/files/abc",
-            "http://localhost:3000",
-        )
-        .expect("dev vault URL should work");
+        let out = translate("vorevault://open/files/abc", "http://localhost:3000")
+            .expect("dev vault URL should work");
         assert_eq!(out, "http://localhost:3000/files/abc");
     }
 
     #[test]
     fn vault_url_with_dev_port_and_trailing_slash() {
-        let out = translate(
-            "vorevault://open/files/abc",
-            "http://localhost:3000/",
-        )
-        .expect("dev vault URL with trailing slash should work");
+        let out = translate("vorevault://open/files/abc", "http://localhost:3000/")
+            .expect("dev vault URL with trailing slash should work");
         assert_eq!(out, "http://localhost:3000/files/abc");
     }
 
@@ -259,11 +244,8 @@ mod tests {
     fn vault_url_with_subpath_mount() {
         // Hypothetical: vault deployed at example.com/vv. Translator must not
         // break on a vault URL that already has a path component.
-        let out = translate(
-            "vorevault://open/files/abc",
-            "https://example.com/vv",
-        )
-        .expect("sub-path mounted vault URL should work");
+        let out = translate("vorevault://open/files/abc", "https://example.com/vv")
+            .expect("sub-path mounted vault URL should work");
         assert_eq!(out, "https://example.com/vv/files/abc");
     }
 
